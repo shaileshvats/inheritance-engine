@@ -57,7 +57,15 @@ Internet → SSH only (ufw). The UI is reached through an SSH tunnel.
 
 ## Validation
 
-Done on 2026-10-28 with Docker Desktop on macOS (arm64): both images built from these Dockerfiles, and the engine
-container was started with the Docker socket mounted. The results are recorded in `docs/partners/README.md`.
+Done on 2026-10-28 with Docker Desktop on macOS (arm64):
+
+- Both images built from these Dockerfiles (engine 359 MB, companion 848 MB).
+- **Companion container:** started, served `/health` (grounded mode, since no model was reachable inside it), and
+  refused to start when pointed at a non-local model endpoint.
+- **Engine container:** started with `/var/run/docker.sock` and a same-path data mount. It reported Docker 29.5.3 through
+  the socket. It then inherited `shaunduncan/smokesignal`: clone, inventory, and a **baseline run in a sandbox started
+  from inside the container** (pytest collection error, the repository's real state on Python 3.12). The first agent
+  call was then **refused by `local_only`**, because the host's LM Studio isn't loopback from inside the container.
+  That is the intended behaviour. On a Droplet the model is Ollama on the same loopback.
 `network_mode: host` behaves differently on Docker Desktop than on Linux, so the full compose stack was **not** run
 end to end locally. It is meant for a Linux Droplet.

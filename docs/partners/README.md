@@ -84,7 +84,9 @@ Deadline: 2026-10-31 23:59 PDT. A submission can win only once, and writing qual
   sandboxes through the host Docker), Dockerfiles, a cloud-init file (SSH-only firewall), and a guide with sizing,
   cost warnings and teardown.
 - **Validated locally:** both images build. The companion container starts, serves `/health`, and refuses a non-local
-  model endpoint. The engine container results are recorded below.
+  model endpoint. The engine container, running with the Docker socket, ran a real clone, inventory and sandboxed
+  baseline from inside the container, and its privacy policy refused a non-loopback model endpoint. Details are in
+  `deploy/digitalocean/README.md`.
 - **Not done:** no Droplet exists. The Hacktoberfest promos page requires the owner's MLH sign-in to check
   DigitalOcean credits. Creating a Droplet is billable and needs the owner's account and approval. **Not claimed until
   deployed and demonstrated.**
