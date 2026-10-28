@@ -102,6 +102,8 @@ pub fn router(app: Arc<App>) -> Router {
             h.insert("x-content-type-options", "nosniff".parse().unwrap());
             h.insert("x-frame-options", "DENY".parse().unwrap());
             h.insert("referrer-policy", "no-referrer".parse().unwrap());
+            // Local tool: always revalidate so a rebuilt UI is never served from a stale cache.
+            h.insert("cache-control", "no-cache".parse().unwrap());
             h.insert(
                 "content-security-policy",
                 "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'".parse().unwrap(),

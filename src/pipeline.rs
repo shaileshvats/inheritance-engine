@@ -484,7 +484,7 @@ pub async fn investigate(ctx: &mut JobCtx) -> anyhow::Result<()> {
                 facts_block(&row, &inv, baseline.as_ref()),
                 pack.text
             );
-            let spec = CallSpec { agent: "historian", purpose: "Reconstruct purpose and architecture".into(), inheritance_id: Some(&id), parent_id: plan_call.clone(), input_files: pack.files.clone(), task, schema: agents::historian_schema(), max_tokens: 2500 };
+            let spec = CallSpec { agent: "historian", purpose: "Reconstruct purpose and architecture".into(), inheritance_id: Some(&id), parent_id: plan_call.clone(), input_files: pack.files.clone(), task, schema: agents::historian_schema(), max_tokens: 4000 };
             let (v, call_id) = app.agents.call_json(spec, &n).await?;
             let purpose = claim_from(&app, &id, &v["purpose"], "c_purpose".into(), "historian");
             // Small models sometimes repeat a claim; keep each distinct statement once.

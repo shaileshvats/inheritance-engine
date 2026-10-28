@@ -145,7 +145,12 @@ fn obj(props: Value, required: &[&str]) -> Value {
 }
 
 fn arr(items: Value) -> Value {
-    json!({"type": "array", "items": items})
+    json!({"type": "array", "items": items, "maxItems": 8})
+}
+
+/// Arrays are always bounded: an unbounded list lets a small model run out of tokens mid-JSON.
+fn arr_max(items: Value, max: u32) -> Value {
+    json!({"type": "array", "items": items, "maxItems": max})
 }
 
 fn s() -> Value {
@@ -161,7 +166,7 @@ pub fn evidence_schema() -> Value {
 }
 
 fn claim_schema() -> Value {
-    obj(json!({"text": s(), "status": en(&["verified", "inferred", "unknown"]), "evidence": arr(evidence_schema())}), &["text", "status", "evidence"])
+    obj(json!({"text": s(), "status": en(&["verified", "inferred", "unknown"]), "evidence": arr_max(evidence_schema(), 3)}), &["text", "status", "evidence"])
 }
 
 pub fn lead_plan_schema() -> Value {
@@ -182,12 +187,12 @@ pub fn historian_schema() -> Value {
     obj(
         json!({
             "purpose": claim_schema(),
-            "capabilities": arr(claim_schema()),
-            "components": arr(obj(json!({"path": s(), "role": s(), "status": en(&["verified", "inferred", "unknown"]), "evidence": arr(evidence_schema())}), &["path", "role", "status", "evidence"])),
-            "data_flows": arr(claim_schema()),
-            "external_services": arr(claim_schema()),
+            "capabilities": arr_max(claim_schema(), 6),
+            "components": arr_max(obj(json!({"path": s(), "role": s(), "status": en(&["verified", "inferred", "unknown"]), "evidence": arr_max(evidence_schema(), 2)}), &["path", "role", "status", "evidence"]), 6),
+            "data_flows": arr_max(claim_schema(), 4),
+            "external_services": arr_max(claim_schema(), 4),
             "build_instructions": s(),
-            "unknowns": arr(s())
+            "unknowns": arr_max(s(), 5)
         }),
         &["purpose", "capabilities", "components", "data_flows", "external_services", "build_instructions", "unknowns"],
     )
@@ -195,22 +200,22 @@ pub fn historian_schema() -> Value {
 
 pub fn restorer_diagnose_schema() -> Value {
     obj(
-        json!({"issues": arr(obj(json!({
+        json!({"issues": arr_max(obj(json!({
             "title": s(),
             "category": en(&["essential", "improvement"]),
             "severity": en(&["high", "medium", "low"]),
             "diagnosis": s(),
-            "decay_groups": arr(s()),
-            "evidence": arr(evidence_schema()),
+            "decay_groups": arr_max(s(), 6),
+            "evidence": arr_max(evidence_schema(), 3),
             "proposed_fix": s(),
             "confidence": en(&["high", "medium", "low"])
-        }), &["title", "category", "severity", "diagnosis", "decay_groups", "evidence", "proposed_fix", "confidence"]))}),
+        }), &["title", "category", "severity", "diagnosis", "decay_groups", "evidence", "proposed_fix", "confidence"]), 8)}),
         &["issues"],
     )
 }
 
 pub fn reviewer_challenge_schema() -> Value {
-    obj(json!({"challenges": arr(obj(json!({"target": s(), "verdict": en(&["agree", "disagree", "insufficient_evidence"]), "reason": s()}), &["target", "verdict", "reason"]))}), &["challenges"])
+    obj(json!({"challenges": arr_max(obj(json!({"target": s(), "verdict": en(&["agree", "disagree", "insufficient_evidence"]), "reason": s()}), &["target", "verdict", "reason"]), 24)}), &["challenges"])
 }
 
 pub fn lead_synthesis_schema() -> Value {
@@ -221,7 +226,7 @@ pub fn restorer_patch_schema() -> Value {
     obj(
         json!({
             "rationale": s(),
-            "edits": arr(obj(json!({"path": s(), "find": s(), "replace": s(), "all_occurrences": {"type": "boolean"}}), &["path", "find", "replace", "all_occurrences"])),
+            "edits": arr_max(obj(json!({"path": s(), "find": s(), "replace": s(), "all_occurrences": {"type": "boolean"}}), &["path", "find", "replace", "all_occurrences"]), 10),
             "expected_effect": s()
         }),
         &["rationale", "edits", "expected_effect"],

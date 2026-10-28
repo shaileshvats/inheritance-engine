@@ -143,6 +143,9 @@ impl ModelClient {
                     anyhow::bail!("model endpoint returned {status}: {}", v["error"].to_string().chars().take(400).collect::<String>());
                 }
                 let content = v["choices"][0]["message"]["content"].as_str().unwrap_or("").to_string();
+                if v["choices"][0]["finish_reason"] == "length" {
+                    anyhow::bail!("output truncated at max_tokens={max_tokens} ({} chars received)", content.len());
+                }
                 if content.trim().is_empty() {
                     anyhow::bail!("model returned an empty message (finish_reason: {})", v["choices"][0]["finish_reason"]);
                 }
