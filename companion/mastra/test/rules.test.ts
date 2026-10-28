@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { proposedAction, requestAllowed } from '../src/server.ts';
-import { allowedKey, ContentStripper, scrubSentryEvent } from '../src/telemetry.ts';
+import { allowedKey, ContentStripper, scrubSentryError, scrubSentryEvent, scrubSentrySpan } from '../src/telemetry.ts';
 import { summarizeDetail, summarizeIssues } from '../src/tools.ts';
 import { mentionedFiles } from '../src/workflows/lead-answer.ts';
 import { validateClassification } from '../src/workflows/triage.ts';
@@ -51,6 +51,19 @@ describe('telemetry never carries content', () => {
     expect(json).toContain('gen_ai.usage.output_tokens');
     expect(json).toContain('google/gemma-4-e4b');
   });
+  it('removes URLs and messages that could carry repository paths or code', () => {
+    const tx: any = scrubSentryEvent({ transaction: 'GET http://127.0.0.1:7878/api/inheritances/x/file?path=fn/func.py', contexts: { trace: { op: 'http.client', data: {} } }, spans: [{ op: 'http.client', description: 'GET /api/inheritances/x/file?path=fn/func.py', data: { url: '/file?path=fn/func.py' } }, { op: 'gen_ai.execute_tool', description: "tool: 'read-source-file'", data: {} }] });
+    expect(JSON.stringify(tx)).not.toContain('fn/func.py');
+    expect(tx.spans[1].description).toBe("tool: 'read-source-file'");
+    const err: any = scrubSentryError({ message: 'def curried(func)', exception: { values: [{ type: 'Error', value: 'engine /api/x/file?path=fn/func.py -> 404' }] }, breadcrumbs: [{ message: 'x' }] });
+    expect(JSON.stringify(err)).not.toContain('fn/func.py');
+    expect(JSON.stringify(err)).not.toContain('curried');
+    expect(err.exception.values[0].type).toBe('Error');
+    const span: any = scrubSentrySpan({ op: 'http.client', description: 'GET /file?path=fn/func.py', data: { 'gen_ai.usage.input_tokens': 3, 'http.url': '/file?path=fn/func.py' } });
+    expect(JSON.stringify(span)).not.toContain('fn/func.py');
+    expect(span.data['gen_ai.usage.input_tokens']).toBe(3);
+  });
+
   it('strips inputs, outputs and prompts from Mastra spans before export', () => {
     const span: any = { input: 'source', output: 'reply', inputPreview: 'x', outputPreview: 'y', attributes: { prompt: 'p', instructions: 'i', model: 'm', usage: { inputTokens: 3 } }, errorInfo: { message: 'e'.repeat(500) } };
     new ContentStripper().process(span);
@@ -99,5 +112,29 @@ describe('context shaping', () => {
     expect(summarizeDetail(d).upstream_issues).toBeNull();
     const withTriage = { ...d, upstream_triage: { total_open_upstream: 24, counts: { addressed_by_successor: 1 }, triaged: [{ number: 91, title: 'Iterable', verdict: 'addressed_by_successor', cited_repairs: ['rep_1'], cited_commits: [] }] } };
     expect(summarizeDetail(withTriage).upstream_issues?.triaged[0]).toEqual({ number: 91, title: 'Iterable', verdict: 'addressed_by_successor', cites: ['rep_1'] });
+  });
+});
+
+describe('envelope-level scrubbing (what actually leaves the process)', () => {
+  it('scrubs streamed spans and transactions, drops unknown item types, never audits the header', async () => {
+    const { scrubEnvelope } = await import('../src/telemetry.ts');
+    const secret = 'def curried(func): AKIAABCDEFGHIJKLMNOP fn/func.py';
+    const env = [
+      { dsn: 'https://key@o1.ingest.sentry.io/1' },
+      [
+        [{ type: 'span', content_type: 'application/vnd.sentry.items.span.v2+json' }, { items: [{ name: 'chat google/gemma-4-e4b', attributes: { 'gen_ai.usage.input_tokens': { type: 'integer', value: 5 }, 'gen_ai.request.messages': { type: 'string', value: secret }, 'sentry.op': { type: 'string', value: 'gen_ai.chat' } } }] }],
+        [{ type: 'transaction' }, { transaction: 'invoke_workflow x', contexts: { trace: { op: 'workflow', data: { input: secret } } }, spans: [{ op: 'workflow.step', description: 'step', data: { output: secret } }] }],
+        [{ type: 'log' }, { items: [{ body: secret }] }],
+        [{ type: 'attachment' }, secret],
+        [{ type: 'client_report' }, { discarded_events: [] }],
+      ],
+    ];
+    const out = scrubEnvelope(env);
+    const json = JSON.stringify(out[1]);
+    expect(json).not.toContain('curried');
+    expect(json).not.toContain('AKIA');
+    expect(json).not.toContain('fn/func.py');
+    expect(out[1].map((i: any) => i[0].type)).toEqual(['span', 'transaction', 'client_report']);
+    expect(json).toContain('gen_ai.usage.input_tokens');
   });
 });

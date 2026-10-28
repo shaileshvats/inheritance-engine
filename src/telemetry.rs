@@ -60,7 +60,11 @@ impl sentry::Transport for ScrubbingTransport {
         let mut out = sentry::Envelope::new();
         for item in envelope.items() {
             match item {
-                sentry::protocol::EnvelopeItem::Transaction(t) => out.add_item(scrub_transaction((**t).clone())),
+                sentry::protocol::EnvelopeItem::Transaction(t) => {
+                    let clean = scrub_transaction((**t).clone());
+                    audit("transaction", &clean);
+                    out.add_item(clean)
+                }
                 other => out.add_item(other.clone()),
             }
         }
@@ -71,6 +75,18 @@ impl sentry::Transport for ScrubbingTransport {
     }
     fn shutdown(&self, timeout: Duration) -> bool {
         self.0.shutdown(timeout)
+    }
+}
+
+/// Optional local audit (`IE_TELEMETRY_AUDIT=path`): append exactly what is handed to the transport, as JSON lines.
+/// The envelope header (which carries the DSN) is never written.
+fn audit(kind: &str, payload: &impl serde::Serialize) {
+    let Ok(path) = std::env::var("IE_TELEMETRY_AUDIT") else { return };
+    let line = json!({"process": "rust-engine", "kind": kind, "at": crate::util::now(), "payload": payload});
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+        use std::io::Write;
+        // One write per record so concurrent writers (engine + companion) cannot interleave inside a line.
+        let _ = f.write_all(format!("{line}\n").as_bytes());
     }
 }
 

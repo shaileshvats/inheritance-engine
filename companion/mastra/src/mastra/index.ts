@@ -3,11 +3,12 @@
 import { Mastra } from '@mastra/core';
 import { Observability } from '@mastra/observability';
 import { SentryExporter } from '@mastra/sentry';
+import { makeNodeTransport } from '@sentry/node';
 import { createGroundedLeadAgent, createLeadAgent } from '../agents/lead.ts';
 import { createTriageAgent } from '../agents/triage.ts';
 import { loadConfig } from '../config.ts';
 import { engineClient } from '../engine.ts';
-import { ContentStripper, scrubSentryEvent } from '../telemetry.ts';
+import { ContentStripper, scrubEnvelope, scrubSentryError, scrubSentryEvent, scrubSentrySpan } from '../telemetry.ts';
 import { buildLeadTools } from '../tools.ts';
 import { createLeadAnswerWorkflow } from '../workflows/lead-answer.ts';
 import { createTriageWorkflow } from '../workflows/triage.ts';
@@ -25,7 +26,20 @@ export function createMastra(cfg = loadConfig(), engine = engineClient(cfg.engin
                 dsn: cfg.sentryDsn,
                 environment: cfg.sentryEnvironment,
                 tracesSampleRate: 1.0,
-                options: { sendDefaultPii: false, beforeSendTransaction: (e) => scrubSentryEvent(e) },
+                options: {
+                  sendDefaultPii: false,
+                  // No automatic HTTP/console instrumentation: their spans and breadcrumbs carry URLs such as
+                  // /file?path=… (repository file paths). Only Mastra's own agent/model/tool spans are sent.
+                  defaultIntegrations: false,
+                  beforeSendTransaction: (e) => scrubSentryEvent(e),
+                  beforeSendSpan: (s) => scrubSentrySpan(s),
+                  beforeSend: (e) => scrubSentryError(e),
+                  // Every envelope passes the allowlist in the transport, whatever its item type.
+                  transport: (o) => {
+                    const t = makeNodeTransport(o);
+                    return { ...t, send: (envelope) => t.send(scrubEnvelope(envelope)) };
+                  },
+                },
               }),
             ],
           },
