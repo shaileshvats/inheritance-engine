@@ -4,7 +4,8 @@
 received a commit on its default branch in October 2014. On Python 3.12 its test suite does not even start.
 
 Everything below came from real runs on a 16 GB Apple M2 laptop, using Gemma 4 E4B in LM Studio (local, offline
-inference) and Docker Desktop. Nothing in this document was hand-written to look like tool output. The Inheritance
+inference) and Docker Desktop. Nothing in this document was hand-written to look like tool output. Excerpts of fn.py (Copyright 2013 Alexey
+Kachayev, Apache-2.0) appear here and in `evidence/` and `screenshots/`; see [NOTICE](../../NOTICE). The Inheritance
 Record from run A is committed at [`evidence/fn-py-run-a-record.json`](evidence/fn-py-run-a-record.json).
 
 ## Demo script (5–7 minutes)

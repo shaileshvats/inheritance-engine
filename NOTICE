@@ -6,3 +6,16 @@ PolyForm Noncommercial is source-available; it is not an OSI-approved open-sourc
 
 Repositories inherited with this tool keep their own licenses. Nothing in this project
 changes, replaces, or grants rights under the license of any inherited project.
+
+Third-party material
+--------------------
+
+docs/demo/ (the evidence record, screenshots, and code excerpts in the demo notes and article draft)
+contains short excerpts of kachayev/fn.py (https://github.com/kachayev/fn.py, commit
+df53f5d6bf0e94a37f44f6be57d1c87c9b7a6c26), Copyright 2013 Alexey Kachayev, licensed under the
+Apache License, Version 2.0 (https://www.apache.org/licenses/LICENSE-2.0). Those excerpts remain under
+the Apache License 2.0; the diffs shown are modifications made by Inheritance Engine's agents to a
+successor copy and are marked as such. They are not covered by the PolyForm Noncommercial license.
+
+Rust dependencies (see Cargo.lock) are used under their own permissive licenses (MIT, Apache-2.0,
+BSD, ISC, Zlib, Unicode-3.0, CDLA-Permissive-2.0). No dependency source is vendored in this repository.
