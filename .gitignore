@@ -4,3 +4,7 @@
 *.sqlite3
 *.sqlite3-*
 .DS_Store
+
+# Mastra companion
+companion/mastra/node_modules/
+companion/mastra/.mastra/

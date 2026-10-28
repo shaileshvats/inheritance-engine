@@ -1,0 +1,31 @@
+{
+  "name": "inheritance-engine-mastra",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Mastra companion for Inheritance Engine: Lead Engineer agent with engine tools and an upstream-issue triage workflow, over a local Gemma model.",
+  "type": "module",
+  "license": "SEE LICENSE IN ../../LICENSE",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "mastra dev",
+    "build": "mastra build",
+    "start": "node .mastra/output/index.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "serve": "node src/server.ts"
+  },
+  "dependencies": {
+    "@mastra/core": "1.79.0",
+    "@mastra/observability": "1.21.0",
+    "@mastra/sentry": "1.2.28",
+    "mastra": "1.35.0",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.5",
+    "typescript": "7.0.2",
+    "vitest": "5.0.5"
+  }
+}
