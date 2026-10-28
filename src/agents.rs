@@ -85,10 +85,13 @@ impl Agents {
         let mut last_err: Option<anyhow::Error> = None;
         let mut raw = String::new();
         let mut value: Option<Value> = None;
+        let mut usage = crate::models::TokenUsage::default();
         for attempt in 0..2 {
-            match self.client.complete(&model, &system, &attempt_prompt, Some(&spec.schema), spec.max_tokens).await {
-                Ok(text) => {
+            match self.client.complete_with_usage(&model, &system, &attempt_prompt, Some(&spec.schema), spec.max_tokens).await {
+                Ok((text, u)) => {
                     raw = text;
+                    usage.input = add_tokens(usage.input, u.input);
+                    usage.output = add_tokens(usage.output, u.output);
                     match parse_json_loose(&raw) {
                         Ok(v) => {
                             value = Some(v);
@@ -125,16 +128,27 @@ impl Agents {
             response_chars: raw.len(),
             ok,
             error: if ok { None } else { last_err.as_ref().map(|e| e.to_string()) },
+            input_tokens: usage.input,
+            output_tokens: usage.output,
             system: Some(system),
             prompt: Some(truncate(&redact(&spec.task), 80_000)),
             response: Some(truncate(&redact(&raw), 40_000)),
         };
         self.db.put(Kind::Call, &id, spec.inheritance_id, &started_at, &record)?;
+        crate::telemetry::record_call(&record);
         tracing::info!(target: "agent", call_id = %id, agent = spec.agent, purpose = %spec.purpose, model = %model, duration_ms, ok, "agent call");
         match value {
             Some(v) => Ok((v, id)),
             None => Err(last_err.unwrap_or_else(|| anyhow::anyhow!("model call failed")).context(format!("{} agent call {id} failed", spec.agent))),
         }
+    }
+}
+
+/// Sum token counts across retries; unknown stays unknown.
+fn add_tokens(a: Option<u64>, b: Option<u64>) -> Option<u64> {
+    match (a, b) {
+        (None, None) => None,
+        _ => Some(a.unwrap_or(0) + b.unwrap_or(0)),
     }
 }
 

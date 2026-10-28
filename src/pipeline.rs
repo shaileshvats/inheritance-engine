@@ -117,6 +117,8 @@ pub async fn run_suite(app: &App, id: &str, label: &str, custom_test: Option<&st
             let is_test = label.ends_with("tests");
             let summary = if is_test { verify::parse_summary(&output) } else { None };
             let (status, reason) = verify::status_for(out.exit_code, out.timed_out, summary.as_ref(), command.contains("pytest"));
+            let tool = if label.ends_with("dependency install") { "sandbox.install" } else if label.ends_with("syntax check") { "sandbox.syntax" } else { "sandbox.tests" };
+            crate::telemetry::record_tool(id, tool, mode.as_str(), &status, out.duration_ms);
             anyhow::Ok(Verification {
                 id: new_id("ver"),
                 label,
@@ -753,6 +755,7 @@ pub async fn investigate(ctx: &mut JobCtx) -> anyhow::Result<()> {
             at: now(),
             call_id: Some(call_id),
             suggested_action: Some(if essential > 0 { "restore_essential".into() } else { "none".into() }),
+            via: Some("engine".into()),
         };
         app.db.put(Kind::Chat, &msg.id, Some(&id), &msg.at, &msg)?;
         let _ = restorer_call;
@@ -1529,4 +1532,52 @@ mod tests {
         let h2 = DecayHit { path: "t.py".into(), line: 1, pattern: "deprecated unittest alias".into(), detail: String::new(), removed_in: String::new(), text: "self.assertEquals(a, b)".into(), matched: ".assertEquals(".into() };
         assert_eq!(decay_token(&h2), "assertEquals");
     }
+}
+
+// ---------- upstream issue triage (Mastra workflow) ----------
+
+pub async fn triage_job(ctx: &mut JobCtx) -> anyhow::Result<()> {
+    let app = ctx.app.clone();
+    let id = ctx.id();
+    let step = "mastra: triage upstream issues";
+    ctx.begin(step).await?;
+    let m = app.mastra.clone().ok_or_else(|| anyhow::anyhow!("the Mastra companion is not configured"))?;
+    let max = ctx.job.params["max_issues"].as_u64().unwrap_or(8) as u32;
+    let started_at = now();
+    let t0 = std::time::Instant::now();
+    let result = m.triage(&id, max).await;
+    let call = AgentCall {
+        id: new_id("call"),
+        inheritance_id: Some(id.clone()),
+        parent_id: None,
+        agent: "triager".into(),
+        purpose: "Triage upstream GitHub issues (Mastra workflow)".into(),
+        provider: "mastra".into(),
+        model: result.as_ref().ok().and_then(|v| v["model"].as_str().map(String::from)).unwrap_or_else(|| app.cfg.model.model.clone()),
+        started_at: started_at.clone(),
+        duration_ms: t0.elapsed().as_millis() as u64,
+        input_files: vec!["workflow: triage-upstream-issues".into()],
+        prompt_chars: 0,
+        response_chars: result.as_ref().map(|v| v.to_string().len()).unwrap_or(0),
+        ok: result.is_ok(),
+        error: result.as_ref().err().map(|e| e.to_string()),
+        input_tokens: None,
+        output_tokens: None,
+        system: Some(format!("Mastra companion at {}; run id {}", m.base(), result.as_ref().ok().and_then(|v| v["run_id"].as_str()).unwrap_or("-"))),
+        prompt: None,
+        response: result.as_ref().ok().map(|v| truncate(&redact(&v.to_string()), 40_000)),
+    };
+    app.db.put(Kind::Call, &call.id, Some(&id), &started_at, &call)?;
+    crate::telemetry::record_call(&call);
+    let mut v = result?;
+    v["triaged_at"] = json!(now());
+    v["call_id"] = json!(call.id);
+    app.db.put_artifact(&id, "upstream_triage", &v)?;
+    let counts = v["counts"].clone();
+    ctx.finish(step, "done", format!(
+        "{} open upstream issue(s); triaged {}: {} addressed by the successor, {} still relevant, {} obsolete, {} need a human",
+        v["total_open_upstream"], v["triaged"].as_array().map(|a| a.len()).unwrap_or(0),
+        counts["addressed_by_successor"], counts["still_relevant"], counts["obsolete"], counts["needs_human"]
+    ));
+    Ok(())
 }

@@ -90,6 +90,7 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/inheritances/{id}/chat", get(get_chat).post(post_chat))
         .route("/inheritances/{id}/calls", get(list_calls))
         .route("/inheritances/{id}/issues/{issue_id}/reopen", post(reopen_issue))
+        .route("/inheritances/{id}/triage", post(triage))
         .route("/calls/{id}", get(get_call))
         .route("/jobs/{id}/{action}", post(job_action))
         .fallback(|| async { ApiError(StatusCode::NOT_FOUND, "no such API route".into()) });
@@ -131,6 +132,14 @@ async fn status(State(app): State<Arc<App>>) -> R<Value> {
             "detail": detail,
         },
         "docker": {"available": docker.is_ok(), "version": docker.as_ref().ok(), "detail": docker.as_ref().err()},
+        "mastra": match &app.mastra {
+            None => json!({"configured": false}),
+            Some(m) => match m.health().await {
+                Ok(h) => json!({"configured": true, "reachable": true, "url": m.base(), "tool_mode": h["tool_mode"], "agents": h["agents"], "workflows": h["workflows"], "sentry": h["sentry"]}),
+                Err(e) => json!({"configured": true, "reachable": false, "url": m.base(), "detail": e}),
+            },
+        },
+        "sentry": crate::telemetry::status(),
         "privacy_mode": app.cfg.privacy_mode,
         "github_token": app.cfg.github_token.is_some(),
         "data_dir": app.cfg.data_dir.display().to_string(),
@@ -252,6 +261,7 @@ async fn detail(State(app): State<Arc<App>>, Path(id): Path<String>) -> R<Value>
     o.insert("jobs".into(), json!(app.jobs_for(&id)));
     o.insert("lineage".into(), json!(record::lineage(&app, &id)));
     o.insert("verify_plan".into(), json!(app.db.get_artifact::<Value>(&id, "verify_plan")?));
+    o.insert("upstream_triage".into(), json!(app.db.get_artifact::<Value>(&id, "upstream_triage")?));
     Ok(Json(v))
 }
 
@@ -395,8 +405,55 @@ async fn post_chat(State(app): State<Arc<App>>, Path(id): Path<String>, Json(b):
     if text.is_empty() {
         return Err(bad("message is empty"));
     }
-    let user = ChatMessage { id: new_id("msg"), role: "user".into(), content: truncate(text, 4000), at: now(), call_id: None, suggested_action: None };
+    let user = ChatMessage { id: new_id("msg"), role: "user".into(), content: truncate(text, 4000), at: now(), call_id: None, suggested_action: None, via: None };
     app.db.put(Kind::Chat, &user.id, Some(&id), &user.at, &user)?;
+
+    // Prefer the Mastra Lead Engineer when the companion is configured; fall back to the built-in Lead, visibly.
+    let mut fallback_note: Option<String> = None;
+    if let Some(m) = &app.mastra {
+        let all: Vec<(String, String)> = app.db.list::<ChatMessage>(Kind::Chat, Some(&id))?.into_iter().filter(|c| c.id != user.id).map(|c| (c.role, c.content)).collect();
+        let history = all[all.len().saturating_sub(8)..].to_vec();
+        let started_at = now();
+        let t0 = std::time::Instant::now();
+        let result = m.lead_chat(&id, text, &history).await;
+        let duration_ms = t0.elapsed().as_millis() as u64;
+        let call_id = new_id("call");
+        let (ok, response, error, tools, usage, mode) = match &result {
+            Ok(r) => (true, r.reply.clone(), None, r.tool_names(), r.usage.clone().unwrap_or_default(), r.mode.clone()),
+            Err(e) => (false, String::new(), Some(e.to_string()), vec![], Default::default(), None),
+        };
+        let record = AgentCall {
+            id: call_id.clone(),
+            inheritance_id: Some(id.clone()),
+            parent_id: None,
+            agent: "lead".into(),
+            purpose: format!("Answer the user (Mastra {})", match mode.as_deref() { Some("native") => "agent with tool calling", Some("grounded") => "answer-lead-question workflow", _ => "companion" }),
+            provider: "mastra".into(),
+            model: result.as_ref().ok().and_then(|r| r.model.clone()).unwrap_or_else(|| app.cfg.model.model.clone()),
+            started_at: started_at.clone(),
+            duration_ms,
+            input_files: tools.iter().map(|t| format!("tool: {t}")).collect(),
+            prompt_chars: text.len(),
+            response_chars: response.len(),
+            ok,
+            error: error.clone(),
+            input_tokens: usage.input_tokens,
+            output_tokens: usage.output_tokens,
+            system: Some(format!("Mastra companion at {} (see companion/mastra)", m.base())),
+            prompt: Some(redact(&truncate(text, 4000))),
+            response: Some(redact(&truncate(&response, 20_000))),
+        };
+        app.db.put(Kind::Call, &call_id, Some(&id), &started_at, &record)?;
+        crate::telemetry::record_call(&record);
+        match result {
+            Ok(r) => {
+                let lead = ChatMessage { id: new_id("msg"), role: "lead".into(), content: r.reply.clone(), at: now(), call_id: Some(call_id), suggested_action: r.action(), via: Some("mastra".into()) };
+                app.db.put(Kind::Chat, &lead.id, Some(&id), &lead.at, &lead)?;
+                return Ok(Json(lead));
+            }
+            Err(e) => fallback_note = Some(format!("The Mastra companion was unavailable ({}); the built-in Lead answered instead.", truncate(&e.to_string(), 200))),
+        }
+    }
 
     let report: Option<Report> = app.db.get_artifact(&id, "report")?;
     let issues: Vec<Issue> = app.db.list(Kind::Issue, Some(&id))?;
@@ -440,7 +497,11 @@ async fn post_chat(State(app): State<Arc<App>>, Path(id): Path<String>, Json(b):
     let spec = CallSpec { agent: "lead", purpose: "Answer the user".into(), inheritance_id: Some(&id), parent_id: None, input_files: vec![], task, schema: agents::lead_chat_schema(), max_tokens: 1000 };
     let (v, call_id) = app.agents.call_json(spec, &n).await?;
     let action = v["suggested_action"].as_str().filter(|a| *a != "none").map(String::from);
-    let lead = ChatMessage { id: new_id("msg"), role: "lead".into(), content: v["reply"].as_str().unwrap_or("").to_string(), at: now(), call_id: Some(call_id), suggested_action: action };
+    let mut content = v["reply"].as_str().unwrap_or("").to_string();
+    if let Some(note) = fallback_note {
+        content = format!("{content}\n\n_{note}_");
+    }
+    let lead = ChatMessage { id: new_id("msg"), role: "lead".into(), content, at: now(), call_id: Some(call_id), suggested_action: action, via: Some("engine".into()) };
     app.db.put(Kind::Chat, &lead.id, Some(&id), &lead.at, &lead)?;
     Ok(Json(lead))
 }
@@ -473,6 +534,22 @@ async fn reopen_issue(State(app): State<Arc<App>>, Path((id, issue_id)): Path<(S
         app.save_row(&mut row)?;
     }
     Ok(Json(issue))
+}
+
+#[derive(Deserialize)]
+struct TriageBody {
+    #[serde(default)]
+    max_issues: Option<u32>,
+}
+
+/// Triage the original repository's open GitHub issues against the successor, via the Mastra workflow.
+async fn triage(State(app): State<Arc<App>>, Path(id): Path<String>, body: Option<Json<TriageBody>>) -> R<Job> {
+    app.row(&id)?;
+    if app.mastra.is_none() {
+        return Err(bad("the Mastra companion is not configured (set IE_MASTRA_URL and run companion/mastra)"));
+    }
+    let max = body.and_then(|b| b.0.max_issues).unwrap_or(8).clamp(1, 30);
+    Ok(Json(app.start_job(&id, "triage", json!({"max_issues": max}))?))
 }
 
 async fn list_calls(State(app): State<Arc<App>>, Path(id): Path<String>) -> R<Vec<AgentCall>> {

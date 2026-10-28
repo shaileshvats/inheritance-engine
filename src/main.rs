@@ -13,6 +13,11 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let cfg = Arc::new(config::Config::from_env()?);
+    // Optional agent tracing; metadata only (see src/telemetry.rs).
+    let _sentry = inheritance_engine::telemetry::init();
+    if inheritance_engine::telemetry::enabled() {
+        tracing::info!("Sentry agent tracing enabled (metadata only: no prompts, responses or source code)");
+    }
     std::fs::create_dir_all(cfg.data_dir.join("inheritances"))?;
     let db = Arc::new(Db::open(&cfg.data_dir.join("engine.sqlite3"))?);
     let client = ModelClient::new(cfg.model.clone(), cfg.privacy_mode, cfg.allow_cloud)?;
@@ -20,7 +25,11 @@ async fn main() -> anyhow::Result<()> {
         tracing::warn!("{e}");
     }
     let agents = Arc::new(Agents::new(client, cfg.clone(), db.clone()));
-    let app = App::new(cfg.clone(), db, agents, GitHub::new(cfg.github_token.clone())?);
+    let mastra = match &cfg.mastra_url {
+        Some(url) => Some(inheritance_engine::mastra::MastraClient::new(url)?),
+        None => None,
+    };
+    let app = App::new(cfg.clone(), db, agents, GitHub::new(cfg.github_token.clone())?, mastra);
     let interrupted = app.recover_jobs()?;
     if interrupted > 0 {
         tracing::warn!(interrupted, "jobs were interrupted by the last shutdown; resume them from the UI");

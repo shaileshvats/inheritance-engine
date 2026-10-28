@@ -55,6 +55,8 @@ pub struct Config {
     pub max_repo_kb: u64,
     /// Character budget for repository content inside a single model prompt.
     pub prompt_budget_chars: usize,
+    /// Optional Mastra companion (loopback) running the Lead agent and the triage workflow.
+    pub mastra_url: Option<String>,
 }
 
 fn var(key: &str) -> Option<String> {
@@ -124,6 +126,7 @@ impl Config {
             run_timeout_secs: var("IE_RUN_TIMEOUT_SECS").and_then(|v| v.parse().ok()).unwrap_or(600),
             max_repo_kb: var("IE_MAX_REPO_KB").and_then(|v| v.parse().ok()).unwrap_or(150_000),
             prompt_budget_chars: var("IE_PROMPT_BUDGET_CHARS").and_then(|v| v.parse().ok()).unwrap_or(28_000),
+            mastra_url: var("IE_MASTRA_URL"),
         })
     }
 

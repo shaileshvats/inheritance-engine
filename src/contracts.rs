@@ -492,6 +492,9 @@ pub struct ChatMessage {
     pub at: String,
     pub call_id: Option<String>,
     pub suggested_action: Option<String>,
+    /// Who produced a lead message: "engine" (built-in Lead) or "mastra" (companion agent/workflow).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub via: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -510,6 +513,10 @@ pub struct AgentCall {
     pub response_chars: usize,
     pub ok: bool,
     pub error: Option<String>,
+    #[serde(default)]
+    pub input_tokens: Option<u64>,
+    #[serde(default)]
+    pub output_tokens: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub system: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

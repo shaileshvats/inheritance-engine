@@ -25,6 +25,7 @@ pub struct App {
     pub db: Arc<Db>,
     pub agents: Arc<Agents>,
     pub gh: GitHub,
+    pub mastra: Option<crate::mastra::MastraClient>,
     controls: Mutex<HashMap<String, Arc<AtomicU8>>>,
 }
 
@@ -40,8 +41,8 @@ impl std::fmt::Display for Cancelled {
 impl std::error::Error for Cancelled {}
 
 impl App {
-    pub fn new(cfg: Arc<Config>, db: Arc<Db>, agents: Arc<Agents>, gh: GitHub) -> Arc<Self> {
-        Arc::new(Self { cfg, db, agents, gh, controls: Mutex::new(HashMap::new()) })
+    pub fn new(cfg: Arc<Config>, db: Arc<Db>, agents: Arc<Agents>, gh: GitHub, mastra: Option<crate::mastra::MastraClient>) -> Arc<Self> {
+        Arc::new(Self { cfg, db, agents, gh, mastra, controls: Mutex::new(HashMap::new()) })
     }
 
     pub fn layout(&self, inheritance_id: &str) -> Layout {
@@ -98,6 +99,7 @@ impl App {
             "investigate" => crate::pipeline::INVESTIGATE_STEPS.to_vec(),
             "restore" => vec!["plan"],
             "verify" => vec!["verify"],
+            "triage" => vec!["mastra: triage upstream issues"],
             _ => anyhow::bail!("unknown job kind {kind}"),
         };
         let t = now();
@@ -128,10 +130,13 @@ impl App {
             ctx.job.status = "running".into();
             ctx.job.error = None;
             ctx.save();
+            let repository = app.row(&ctx.job.inheritance_id).map(|r| r.full_name).unwrap_or_default();
+            crate::telemetry::job_started(&ctx.job, &repository);
             let result = match ctx.job.kind.as_str() {
                 "investigate" => crate::pipeline::investigate(&mut ctx).await,
                 "restore" => crate::pipeline::restore(&mut ctx).await,
                 "verify" => crate::pipeline::verify_job(&mut ctx).await,
+                "triage" => crate::pipeline::triage_job(&mut ctx).await,
                 _ => Err(anyhow::anyhow!("unknown job kind")),
             };
             match result {
@@ -151,6 +156,7 @@ impl App {
                 }
             }
             ctx.save();
+            crate::telemetry::job_finished(&ctx.job.inheritance_id, &ctx.job.status);
             app.controls.lock().unwrap().remove(&id);
         });
     }

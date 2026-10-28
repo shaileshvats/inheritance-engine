@@ -174,6 +174,7 @@ pub async fn run(app: &App, id: &str, issue: &Issue, diff: &str, files: &[String
         })
         .await?;
         let output = redact(&out.output);
+        crate::telemetry::record_tool(id, "sandbox.probe", "docker", if out.exit_code == Some(0) { "passed" } else { "error" }, out.duration_ms);
         let ver = Verification {
             id: new_id("ver"),
             label: format!("behaviour probe · {label} ({image})"),

@@ -15,6 +15,12 @@ pub enum Locality {
     Remote,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TokenUsage {
+    pub input: Option<u64>,
+    pub output: Option<u64>,
+}
+
 #[derive(Clone)]
 pub struct ModelClient {
     pub cfg: ModelConfig,
@@ -119,6 +125,11 @@ impl ModelClient {
 
     /// One chat completion. With `schema`, the runtime constrains output to that JSON schema.
     pub async fn complete(&self, model: &str, system: &str, user: &str, schema: Option<&Value>, max_tokens: u32) -> anyhow::Result<String> {
+        Ok(self.complete_with_usage(model, system, user, schema, max_tokens).await?.0)
+    }
+
+    /// Like `complete`, also returning (input_tokens, output_tokens) when the runtime reports them.
+    pub async fn complete_with_usage(&self, model: &str, system: &str, user: &str, schema: Option<&Value>, max_tokens: u32) -> anyhow::Result<(String, TokenUsage)> {
         self.check_policy()?;
         match self.cfg.provider {
             ProviderKind::OpenAiCompatible => {
@@ -149,7 +160,7 @@ impl ModelClient {
                 if content.trim().is_empty() {
                     anyhow::bail!("model returned an empty message (finish_reason: {})", v["choices"][0]["finish_reason"]);
                 }
-                Ok(content)
+                Ok((content, TokenUsage { input: v["usage"]["prompt_tokens"].as_u64(), output: v["usage"]["completion_tokens"].as_u64() }))
             }
             ProviderKind::Ollama => {
                 let mut body = json!({
@@ -170,7 +181,7 @@ impl ModelClient {
                 if !status.is_success() {
                     anyhow::bail!("ollama returned {status}: {}", v["error"]);
                 }
-                Ok(v["message"]["content"].as_str().unwrap_or("").to_string())
+                Ok((v["message"]["content"].as_str().unwrap_or("").to_string(), TokenUsage { input: v["prompt_eval_count"].as_u64(), output: v["eval_count"].as_u64() }))
             }
         }
     }
