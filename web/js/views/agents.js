@@ -8,6 +8,8 @@ const ROLES = {
   restorer: { label: 'Restorer', blurb: 'Diagnoses problems and writes repairs.' },
   reviewer: { label: 'Reviewer / Tester', blurb: 'Challenges claims and reviews every repair.' },
   hunter: { label: 'Hunter', blurb: 'Turns problems into searches and explains candidates.' },
+  tester: { label: 'Tester', blurb: 'Writes behaviour probes comparing the successor with the original.' },
+  triager: { label: 'Issue Triager', blurb: 'Mastra workflow: classifies upstream issues against the successor.' },
 };
 
 export class AgentsTab {
@@ -104,7 +106,9 @@ export class AgentsTab {
     const btn = h('button', { class: 'call-toggle', type: 'button', 'aria-expanded': String(open) },
       h('span', { class: `role-badge role-${c.agent}` }, (ROLES[c.agent] || {}).label || titleCase(c.agent)),
       h('span', { class: 'call-purpose' }, c.purpose || '—'),
+      c.provider === 'mastra' ? h('span', { class: 'role-badge role-mastra', title: 'Ran in the Mastra companion' }, 'Mastra') : null,
       h('span', { class: 'call-meta small muted' }, fmtDuration(c.duration_ms)),
+      c.input_tokens != null || c.output_tokens != null ? h('span', { class: 'call-meta small muted', title: 'Tokens reported by the model runtime' }, `${fmtNum(c.input_tokens ?? 0)}→${fmtNum(c.output_tokens ?? 0)} tok`) : null,
       c.ok ? pill('ok', 'OK') : pill('failed', 'Failed'));
     btn.addEventListener('click', () => {
       if (this.expanded.has(c.id)) this.expanded.delete(c.id); else this.expanded.add(c.id);

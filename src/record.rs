@@ -103,6 +103,7 @@ pub fn build(app: &App, id: &str) -> anyhow::Result<Value> {
             "attempts": repairs,
             "changes": lineage(app, id).into_iter().filter(|l| l["kind"] == "successor").collect::<Vec<_>>(),
             "verification": verifications,
+            "upstream_triage": app.db.get_artifact::<Value>(id, "upstream_triage")?,
         },
         "successor": {
             "identity": {"name": row.successor_name, "branch": gitops::SUCCESSOR_BRANCH, "head": head},

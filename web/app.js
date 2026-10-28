@@ -33,6 +33,12 @@ function chip(toneName, label, title) {
 
 export let systemStatus = null;
 
+function mastraChip(m) {
+  if (!m || !m.configured) return null;
+  if (!m.reachable) return chip('warn', 'Mastra offline', `Mastra companion not reachable at ${m.url}; the built-in Lead answers instead.`);
+  return chip('good', `Mastra · ${m.tool_mode || '?'}`, `Mastra companion at ${m.url}: Lead Engineer agent and upstream-issue triage workflow. Tool mode: ${m.tool_mode} (${m.tool_mode === 'native' ? 'the model chooses tools' : 'a workflow calls the tools; this runtime cannot do tool calling'}).`);
+}
+
 async function refreshStatus() {
   const el = document.getElementById('status-chips');
   try {
@@ -54,7 +60,9 @@ async function refreshStatus() {
         'Model privacy policy: where source code and conversations may be sent'),
       chip(st.github_token ? 'good' : 'muted',
         st.github_token ? 'GitHub token' : 'GitHub anonymous',
-        st.github_token ? 'Using a GitHub token from the environment (read-only use)' : 'Anonymous GitHub API: low rate limits'));
+        st.github_token ? 'Using a GitHub token from the environment (read-only use)' : 'Anonymous GitHub API: low rate limits'),
+      mastraChip(st.mastra),
+      st.sentry && st.sentry.enabled ? chip('good', 'Sentry tracing', 'Agent traces are sent to Sentry: metadata only (roles, models, tokens, latency, outcomes); no prompts, responses or source code') : null);
   } catch (e) {
     systemStatus = null;
     replace(el, chip('bad', 'Server unreachable', e.message));

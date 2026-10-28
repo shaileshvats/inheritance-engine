@@ -47,7 +47,7 @@ export class OverviewTab {
   }
 
   update(d) {
-    this.facts.update(d, sig([d.report && d.report.purpose, d.report && d.report.next_actions, d.last_verification, d.issues, d.counts, d.stage]));
+    this.facts.update(d, sig([d.report && d.report.purpose, d.report && d.report.next_actions, d.last_verification, d.issues, d.counts, d.stage, d.upstream_triage, !!d.active_job]));
     // Refresh the conversation whenever a job changes state (the lead may have posted a summary).
     const js = sig((d.jobs || []).map((j) => [j.id, j.status]));
     if (this.jobSig !== null && js !== this.jobSig && !this.pending) this.loadChat();
@@ -95,7 +95,7 @@ export class OverviewTab {
     }
     return h('div', { class: ['msg', isLead ? 'msg-lead' : 'msg-user'] },
       h('div', { class: 'msg-meta' },
-        isLead ? h('span', { class: 'agent-tag' }, 'Lead · Gemma') : h('span', { class: 'you-tag' }, 'You'),
+        isLead ? h('span', { class: 'agent-tag', title: m.via === 'mastra' ? 'Answered by the Mastra Lead Engineer (companion/mastra) over Gemma' : 'Answered by the engine’s built-in Lead over Gemma' }, m.via === 'mastra' ? 'Lead · Mastra · Gemma' : 'Lead · Gemma') : h('span', { class: 'you-tag' }, 'You'),
         h('time', { class: 'small muted', datetime: m.at }, fmtDate(m.at, true)),
         isLead && m.call_id ? h('button', { class: 'link small', type: 'button', onclick: () => this.ctx.goTab('agents', { call: m.call_id }) }, 'trace') : null),
       h('div', { class: 'msg-body' }, isLead ? markdown(m.content) : h('p', null, m.content)),
@@ -126,6 +126,34 @@ export class OverviewTab {
   /** Ask the lead to explain issues (used by the Restoration tab). */
   focus(f) { if (f && f.prompt) this.send(f.prompt); else if (f && f.input) this.input.focus(); }
 
+  /** Upstream issues of the original repository, triaged against the successor by the Mastra workflow. */
+  triageCard(d) {
+    const t = d.upstream_triage;
+    const VERDICT = { addressed_by_successor: ['passed', 'Addressed'], still_relevant: ['info', 'Still relevant'], obsolete: ['muted', 'Obsolete'], needs_human: ['warn', 'Needs you'] };
+    const start = h('button', { class: 'btn btn-secondary btn-sm', type: 'button', disabled: !!d.active_job }, t ? 'Re-run triage' : 'Triage upstream issues');
+    const note = h('p', { class: 'small muted', role: 'status', 'aria-live': 'polite' });
+    start.addEventListener('click', async () => {
+      start.disabled = true;
+      const job = await this.ctx.startJob(api.triage(this.ctx.id));
+      note.textContent = job ? 'Triage started: the Mastra workflow classifies each open issue with Gemma.' : 'Could not start triage (is the Mastra companion running?).';
+    });
+    return h('div', { class: 'card facts-card' },
+      h('h2', null, 'Upstream issues'),
+      h('p', { class: 'small muted' }, 'Open issues on the original repository, classified against the successor’s changes by a Mastra workflow. "Addressed" is kept only when it cites a real repair or commit.'),
+      t ? [
+        h('p', { class: 'small' }, `${fmtNum(t.total_open_upstream)} open upstream · triaged ${fmtNum((t.triaged || []).length)} · ${fmtDate(t.triaged_at, true)}`),
+        h('ul', { class: 'triage-list' }, (t.triaged || []).map((x) => {
+          const [state, label] = VERDICT[x.verdict] || ['muted', titleCase(x.verdict)];
+          return h('li', null,
+            pill(state, label), ' ',
+            h('a', { href: x.url, target: '_blank', rel: 'noopener noreferrer' }, `#${x.number}`), ' ', x.title,
+            h('details', { class: 'small' }, h('summary', null, 'why'), h('p', null, x.reason), h('p', { class: 'muted' }, `Engine check: ${x.engine_check}`)));
+        })),
+      ] : null,
+      h('div', { class: 'row' }, start),
+      note);
+  }
+
   renderFacts(d) {
     const issues = d.issues || [];
     const open = issues.filter((i) => i.status === 'open');
@@ -148,6 +176,7 @@ export class OverviewTab {
           stat('Agent calls', fmtNum(d.counts?.agent_calls ?? 0))),
         essential.length ? h('ul', { class: 'issue-mini' }, essential.slice(0, 4).map((i) => h('li', null, pill(i.severity), ' ', i.title))) : null,
         open.length ? h('button', { class: 'link small', type: 'button', onclick: () => this.ctx.goTab('restoration') }, 'Go to restoration →') : null),
+      this.triageCard(d),
       r && (r.next_actions || []).length ? h('div', { class: 'card facts-card' },
         h('h2', null, 'Next actions'),
         h('p', { class: 'small muted' }, 'Suggested by the Lead Engineer'),

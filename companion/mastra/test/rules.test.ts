@@ -96,5 +96,8 @@ describe('context shaping', () => {
     const d = { full_name: 'o/r', stage: 'restoring', report: { reviewer_challenges: [{ target: 'c1', verdict: 'disagree', reason: 'r' }, { target: 'c2', verdict: 'agree', reason: 'ok' }] }, issues: [{ id: 'i1', title: 't', status: 'open', reopened_note: 'human saw a bug' }] };
     expect(summarizeDetail(d).reviewer_disagreements).toHaveLength(1);
     expect(summarizeIssues(d)[0].reopened_by_human).toBe(true);
+    expect(summarizeDetail(d).upstream_issues).toBeNull();
+    const withTriage = { ...d, upstream_triage: { total_open_upstream: 24, counts: { addressed_by_successor: 1 }, triaged: [{ number: 91, title: 'Iterable', verdict: 'addressed_by_successor', cited_repairs: ['rep_1'], cited_commits: [] }] } };
+    expect(summarizeDetail(withTriage).upstream_issues?.triaged[0]).toEqual({ number: 91, title: 'Iterable', verdict: 'addressed_by_successor', cites: ['rep_1'] });
   });
 });

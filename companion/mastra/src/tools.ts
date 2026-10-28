@@ -26,7 +26,7 @@ export function summarizeDetail(d: any) {
     successor_commits_ahead: d.successor?.commits_ahead ?? 0,
     execution_mode: d.execution_mode,
     purpose: d.report?.purpose ? { text: d.report.purpose.text, status: d.report.purpose.status } : null,
-    lead_summary: d.report?.lead_summary ? truncate(d.report.lead_summary, 1500) : null,
+    lead_summary: d.report?.lead_summary ? truncate(d.report.lead_summary, 600) : null,
     reviewer_disagreements: (d.report?.reviewer_challenges ?? [])
       .filter((c: any) => c.verdict !== 'agree')
       .slice(0, 8)
@@ -35,6 +35,18 @@ export function summarizeDetail(d: any) {
       ? { label: v.label, status: v.status, summary: v.summary, command: v.command, environment: v.environment }
       : null,
     counts: d.counts,
+    upstream_issues: d.upstream_triage
+      ? {
+          open_upstream: d.upstream_triage.total_open_upstream,
+          counts: d.upstream_triage.counts,
+          triaged: (d.upstream_triage.triaged ?? []).slice(0, 12).map((t: any) => ({
+            number: t.number,
+            title: t.title,
+            verdict: t.verdict,
+            cites: [...(t.cited_repairs ?? []), ...(t.cited_commits ?? [])],
+          })),
+        }
+      : null,
   };
 }
 

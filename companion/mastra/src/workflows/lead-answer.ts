@@ -54,8 +54,10 @@ export function createLeadAnswerWorkflow(tools: LeadTools) {
           files.push({ path: f.path, error: String(e?.message ?? e).slice(0, 200) });
         }
       }
+      const { upstream_issues, ...overviewRest } = overview as any;
       const context = [
-        `OVERVIEW\n${JSON.stringify(overview, null, 1)}`,
+        `OVERVIEW\n${JSON.stringify(overviewRest, null, 1)}`,
+        `UPSTREAM GITHUB ISSUES of the original repository, triaged against the successor\n${upstream_issues ? JSON.stringify(upstream_issues, null, 1) : 'not triaged yet'}`,
         `ISSUES\n${JSON.stringify(issues, null, 1)}`,
         `REPAIRS\n${JSON.stringify(repairs, null, 1)}`,
         ...files.map((f: any) => (f.content ? f.content : `FILE ${f.path}: ${f.error}`)),
@@ -71,8 +73,9 @@ export function createLeadAnswerWorkflow(tools: LeadTools) {
     outputSchema: leadReply.extend({ toolsUsed: z.array(z.string()), usage: z.any() }),
     execute: async ({ inputData, mastra }) => {
       const agent = mastra!.getAgent('leadEngineerGrounded');
-      const convo = inputData.history.slice(-6).map((m) => `${m.role}: ${m.content.slice(0, 800)}`).join('\n');
-      const prompt = `Tool results (recorded by the engine):\n${inputData.context}\n\nConversation so far:\n${convo || '(none)'}\n\nUser's question: ${inputData.question}\n\nAnswer the question. Set proposed_action to one action the user could approve, or "none".`;
+      // Short history only: long earlier answers (e.g. the investigation summary) get parroted by small models.
+      const convo = inputData.history.slice(-4).map((m) => `${m.role}: ${m.content.slice(0, 300)}`).join('\n');
+      const prompt = `Tool results (recorded by the engine):\n${inputData.context}\n\nConversation so far:\n${convo || '(none)'}\n\nUser's question: ${inputData.question}\n\nStart with the direct answer to the question; do not restate the project summary or repeat earlier answers. Inside reply, never use double-quote characters (use single quotes or backticks). Set proposed_action to one action the user could approve, or "none".`;
       const r: any = await agent.generate(prompt, { structuredOutput: { schema: leadReply } });
       return { ...(r.object as z.infer<typeof leadReply>), toolsUsed: inputData.toolsUsed, usage: r.usage ?? null };
     },

@@ -42,6 +42,7 @@ export const api = {
   setExecutionMode: (id, mode) => request('POST', `/api/inheritances/${enc(id)}/execution-mode`, { mode }),
   renameSuccessor: (id, name) => request('PATCH', `/api/inheritances/${enc(id)}/successor`, { name }),
 
+  triage: (id, maxIssues) => request('POST', `/api/inheritances/${enc(id)}/triage`, maxIssues ? { max_issues: maxIssues } : {}),
   reopenIssue: (id, issueId, note) => request('POST', `/api/inheritances/${enc(id)}/issues/${enc(issueId)}/reopen`, { note }),
 
   jobAction: (jobId, action) => request('POST', `/api/jobs/${enc(jobId)}/${action}`),

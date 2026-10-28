@@ -639,6 +639,10 @@ details[open] > summary::before { transform: rotate(90deg); }
 .role-badge.role-restorer { background: var(--info-bg); color: var(--info); }
 .role-badge.role-reviewer { background: var(--warn-bg); color: var(--warn); }
 .role-badge.role-hunter { background: var(--good-bg); color: var(--good); }
+.role-badge.role-tester, .role-badge.role-triager { background: var(--info-bg); color: var(--info); }
+.role-badge.role-mastra { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.triage-list { list-style: none; padding: 0; margin: .5rem 0; display: grid; gap: .35rem; font-size: .88rem; }
+.triage-list details { margin-top: .15rem; }
 .trace-list, .trace-children { list-style: none; margin: 0; display: grid; gap: 6px; }
 .trace-list { padding: 0; }
 .trace-children { padding: 6px 0 0 22px; border-left: 2px solid var(--border); margin-left: 12px; }
