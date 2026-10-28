@@ -26,7 +26,8 @@ const MARK: &str = "@@IE-PROBE@@";
 /// The newest Python that still had every API the decay scan says the project relies on.
 pub fn legacy_python_image(inv: &Inventory, modern: &str) -> Option<String> {
     let mut min_removed: Option<(u32, u32)> = None;
-    for h in &inv.decay {
+    // Lines guarded by a version check already support both runtimes; they say nothing about the era.
+    for h in inv.decay.iter().filter(|h| !h.detail.contains("guarded")) {
         let Some(v) = h.removed_in.strip_prefix("Python ") else { continue };
         let mut parts = v.split(|c: char| !c.is_ascii_digit()).filter(|s| !s.is_empty());
         let (Some(maj), Some(min)) = (parts.next().and_then(|m| m.parse::<u32>().ok()), parts.next().and_then(|m| m.parse::<u32>().ok())) else { continue };
@@ -262,6 +263,9 @@ mod tests {
         assert_eq!(legacy_python_image(&inv(vec![hit("Python 3.0")]), "python:3.12-slim").as_deref(), Some("python:2.7-slim"));
         assert_eq!(legacy_python_image(&inv(vec![hit("Python 3.12 (setuptools no longer bundled)")]), "python:3.12-slim").as_deref(), Some("python:3.11-slim"));
         assert_eq!(legacy_python_image(&inv(vec![hit("Node.js 10 (deprecated)")]), "python:3.12-slim"), None);
+        let mut guarded = hit("Python 3.0");
+        guarded.detail = "x (this line appears guarded by a Python version check, so it may be harmless)".into();
+        assert_eq!(legacy_python_image(&inv(vec![guarded, hit("Python 3.10")]), "python:3.12-slim").as_deref(), Some("python:3.9-slim"));
     }
 
     #[test]

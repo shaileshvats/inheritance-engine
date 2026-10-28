@@ -647,40 +647,51 @@ pub async fn investigate(ctx: &mut JobCtx) -> anyhow::Result<()> {
             r
         }
         None => {
-            let n = agents::nonce();
             let issues: Vec<Issue> = issues_of(&app, &id).into_iter().filter(|i| i.status == "open").collect();
-            let fmt_ev = |ev: &[Evidence]| -> String { ev.iter().map(|e| format!("      {}:{}-{} [engine check: {}] \"{}\"", e.path, e.start_line, e.end_line, e.check, redact(&truncate(&e.quote, 160)))).collect::<Vec<_>>().join("\n") };
-            let mut body = String::from("CLAIMS from the Historian:\n");
-            for c in &claims {
-                body.push_str(&format!("- {} [{}] {}\n{}\n", c.id, c.status, c.text, fmt_ev(&c.evidence)));
-            }
-            body.push_str("\nISSUES from the Restorer and decay scan:\n");
-            for i in &issues {
-                body.push_str(&format!("- {} [{} / {} / {}] {}: {}\n{}\n", i.id, i.category, i.severity, i.source, i.title, truncate(&i.diagnosis, 400), fmt_ev(&i.evidence)));
-            }
-            let task = format!(
-                "Independently review your colleagues' findings. For each claim and issue id, decide: agree (evidence supports it), disagree (evidence contradicts it or the category/severity is wrong), or insufficient_evidence. Pay special attention to citations whose engine check is not 'verified', to claims about the creator's intent, and to issues marked essential. Give a one-sentence reason each. Baseline verification: {}\n\n{}",
-                baseline.as_ref().map(verification_brief).unwrap_or_else(|| "not run".into()),
-                agents::untrusted(&n, "FINDINGS (contain quotes from the repository)", &body)
-            );
-            let spec = CallSpec { agent: "reviewer", purpose: "Challenge historian claims and restorer diagnoses".into(), inheritance_id: Some(&id), parent_id: plan_call.clone(), input_files: vec![], task, schema: agents::reviewer_challenge_schema(), max_tokens: 2000 };
-            let (v, call_id) = app.agents.call_json(spec, &n).await?;
             let valid: BTreeSet<String> = claims.iter().map(|c| c.id.clone()).chain(issues.iter().map(|i| i.id.clone())).collect();
-            let challenges: Vec<Challenge> = v["challenges"]
-                .as_array()
-                .map(|a| {
-                    a.iter()
-                        .filter_map(|c| {
-                            let target = c["target"].as_str()?.trim().to_string();
-                            valid.contains(&target).then(|| Challenge { target, verdict: c["verdict"].as_str().unwrap_or("insufficient_evidence").into(), reason: c["reason"].as_str().unwrap_or("").into() })
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
+            let fmt_ev = |ev: &[Evidence]| -> String { ev.iter().map(|e| format!("      {}:{}-{} [engine check: {}] \"{}\"", e.path, e.start_line, e.end_line, e.check, redact(&truncate(&e.quote, 160)))).collect::<Vec<_>>().join("\n") };
+            let mut challenges: Vec<Challenge> = Vec::new();
+            let mut call_ids: Vec<String> = Vec::new();
+            // Up to two passes: the second asks only about items the first pass skipped.
+            for pass in 0..2 {
+                let done: BTreeSet<String> = challenges.iter().map(|c| c.target.clone()).collect();
+                let todo_claims: Vec<&Claim> = claims.iter().filter(|c| !done.contains(&c.id)).collect();
+                let todo_issues: Vec<&Issue> = issues.iter().filter(|i| !done.contains(&i.id)).collect();
+                if todo_claims.is_empty() && todo_issues.is_empty() {
+                    break;
+                }
+                let n = agents::nonce();
+                let mut body = String::from("CLAIMS from the Historian:\n");
+                for c in &todo_claims {
+                    body.push_str(&format!("- {} [{}] {}\n{}\n", c.id, c.status, c.text, fmt_ev(&c.evidence)));
+                }
+                body.push_str("\nISSUES from the Restorer and decay scan:\n");
+                for i in &todo_issues {
+                    body.push_str(&format!("- {} [{} / {} / {}] {}: {}\n{}\n", i.id, i.category, i.severity, i.source, i.title, truncate(&i.diagnosis, 400), fmt_ev(&i.evidence)));
+                }
+                let ids: Vec<&str> = todo_claims.iter().map(|c| c.id.as_str()).chain(todo_issues.iter().map(|i| i.id.as_str())).collect();
+                let task = format!(
+                    "Independently review your colleagues' findings. Return exactly one verdict for EACH of these ids: {}. Decide: agree (evidence supports it), disagree (evidence contradicts it or the category/severity is wrong), or insufficient_evidence. Pay special attention to citations whose engine check is not 'verified', to claims about the creator's intent, and to issues marked essential. Give a one-sentence reason each. Baseline verification: {}\n\n{}",
+                    ids.join(", "),
+                    baseline.as_ref().map(verification_brief).unwrap_or_else(|| "not run".into()),
+                    agents::untrusted(&n, "FINDINGS (contain quotes from the repository)", &body)
+                );
+                let purpose = if pass == 0 { "Challenge historian claims and restorer diagnoses".to_string() } else { format!("Challenge the {} findings skipped in the first pass", ids.len()) };
+                let spec = CallSpec { agent: "reviewer", purpose, inheritance_id: Some(&id), parent_id: plan_call.clone(), input_files: vec![], task, schema: agents::reviewer_challenge_schema(), max_tokens: 2000 };
+                let (v, call_id) = app.agents.call_json(spec, &n).await?;
+                call_ids.push(call_id);
+                for c in v["challenges"].as_array().cloned().unwrap_or_default() {
+                    let Some(target) = c["target"].as_str().map(|t| t.trim().to_string()) else { continue };
+                    if valid.contains(&target) && !challenges.iter().any(|x| x.target == target) {
+                        challenges.push(Challenge { target, verdict: c["verdict"].as_str().unwrap_or("insufficient_evidence").into(), reason: c["reason"].as_str().unwrap_or("").into() });
+                    }
+                }
+            }
+            let unassessed: Vec<String> = valid.iter().filter(|v| !challenges.iter().any(|c| &c.target == *v)).cloned().collect();
             let disagreements = challenges.iter().filter(|c| c.verdict != "agree").count();
-            let out = json!({"call_id": call_id, "challenges": challenges});
+            let out = json!({"call_id": call_ids.first(), "call_ids": call_ids, "challenges": challenges, "unassessed": unassessed});
             app.db.put_artifact(&id, "inv:review", &out)?;
-            ctx.finish("reviewer: challenge", "done", format!("{} verdicts, {} disagreements or evidence gaps", challenges.len(), disagreements));
+            ctx.finish("reviewer: challenge", "done", format!("{} verdicts, {} disagreements or evidence gaps{}", challenges.len(), disagreements, if unassessed.is_empty() { String::new() } else { format!(", {} not assessed", unassessed.len()) }));
             out
         }
     };
@@ -719,7 +730,13 @@ pub async fn investigate(ctx: &mut JobCtx) -> anyhow::Result<()> {
             data_flows: serde_json::from_value(hist["data_flows"].clone()).unwrap_or_default(),
             external_services: serde_json::from_value(hist["external_services"].clone()).unwrap_or_default(),
             build_instructions: hist["build_instructions"].as_str().unwrap_or("").to_string(),
-            unknowns: serde_json::from_value(hist["unknowns"].clone()).unwrap_or_default(),
+            unknowns: {
+                let mut u: Vec<String> = serde_json::from_value(hist["unknowns"].clone()).unwrap_or_default();
+                if let Some(un) = review["unassessed"].as_array().filter(|a| !a.is_empty()) {
+                    u.push(format!("The Reviewer did not assess: {}", un.iter().filter_map(|x| x.as_str()).collect::<Vec<_>>().join(", ")));
+                }
+                u
+            },
             reviewer_challenges: challenges.clone(),
             next_actions: serde_json::from_value(v["next_actions"].clone()).unwrap_or_default(),
             generated_at: now(),
