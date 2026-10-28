@@ -107,7 +107,25 @@ export class RestorationTab {
       i.proposed_fix ? h('p', { class: 'small' }, h('strong', null, 'Proposed fix: '), i.proposed_fix) : null,
       evidenceList(i.evidence, this.ctx, `iss-ev-${i.id}`),
       repairs.length ? h('p', { class: 'small' }, 'Repair attempts: ', repairs.map((r, k) => [k ? ', ' : '',
-        h('button', { class: 'link', type: 'button', onclick: () => this.focus({ issue: r.id }) }, `${titleCase(r.status)} ${fmtDate(r.created_at, true)}`)])) : null);
+        h('button', { class: 'link', type: 'button', onclick: () => this.focus({ issue: r.id }) }, `${titleCase(r.status)} ${fmtDate(r.created_at, true)}`)])) : null,
+      i.status !== 'open' ? this.reopenForm(i, busy) : null);
+  }
+
+  /** The inheritor can disagree with the engine: reopen an issue with their own finding. */
+  reopenForm(i, busy) {
+    const note = h('textarea', { rows: 3, class: 'input', 'aria-label': `What did you find about ${i.title}?`, placeholder: 'What did you observe? e.g. "curried() behaves differently for functions with *args than the original did."' });
+    const status = h('p', { class: 'small muted', role: 'status', 'aria-live': 'polite' });
+    const submit = h('button', { class: 'btn btn-secondary', type: 'button', disabled: busy }, 'Reopen issue');
+    submit.addEventListener('click', async () => {
+      if (!note.value.trim()) { status.textContent = 'Describe what you found first.'; return; }
+      submit.disabled = true;
+      try {
+        await api.reopenIssue(this.d.id, i.id, note.value.trim());
+        status.textContent = 'Reopened. Use "Fix selected" to restore it again with your note.';
+        this.ctx.refresh && this.ctx.refresh();
+      } catch (e) { status.textContent = `Could not reopen: ${e.message}`; submit.disabled = false; }
+    });
+    return h('details', { class: 'reopen small' }, h('summary', null, 'Disagree? Reopen with your finding'), note, h('div', { class: 'row' }, submit), status);
   }
 
   renderRepairs(d) {

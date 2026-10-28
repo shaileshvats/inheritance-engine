@@ -598,6 +598,7 @@ pub async fn investigate(ctx: &mut JobCtx) -> anyhow::Result<()> {
                 source: "restorer".into(),
                 status: "open".into(),
                 pattern: matched.first().map(|g| g.pattern.clone()),
+                reopened_note: None,
             };
             save_issue(&app, &id, &issue)?;
             created += 1;
@@ -619,6 +620,7 @@ pub async fn investigate(ctx: &mut JobCtx) -> anyhow::Result<()> {
                 source: "decay-scan".into(),
                 status: "open".into(),
                 pattern: Some(g.pattern.clone()),
+                reopened_note: None,
             };
             save_issue(&app, &id, &issue)?;
             created += 1;
@@ -993,13 +995,14 @@ async fn repair_issue(app: &App, id: &str, inv: &Inventory, mut issue: Issue, be
         let n = agents::nonce();
         let pack = pack_files(app, id, &n, &files, app.cfg.prompt_budget_chars * 3 / 4);
         let task = format!(
-            "Repair this issue in the successor copy (the original is preserved separately).\n\nIssue {}: {}\nCategory: {} / severity {}\nDiagnosis: {}\nProposed fix: {}\n\nCurrent verification: {}\n{}{}\n{}\nReturn search/replace edits. Each 'find' must be copied EXACTLY from the file content (without the `N| ` line-number prefixes), include enough context to be unique, or set all_occurrences=true for a mechanical rename. Change only what is needed to fix the root cause; keep the original behaviour and style. Do not create new files.",
+            "Repair this issue in the successor copy (the original is preserved separately).\n\nIssue {}: {}\nCategory: {} / severity {}\nDiagnosis: {}\nProposed fix: {}{}\n\nCurrent verification: {}\n{}{}\n{}\nReturn search/replace edits. Each 'find' must be copied EXACTLY from the file content (without the `N| ` line-number prefixes), include enough context to be unique, or set all_occurrences=true for a mechanical rename. Change only what is needed to fix the root cause; keep the original behaviour and style. Do not create new files.",
             issue.id,
             issue.title,
             issue.category,
             issue.severity,
             redact(&issue.diagnosis),
             redact(&issue.proposed_fix),
+            issue.reopened_note.as_ref().map(|note| format!("\n\nThe inheritor (a human) reopened this issue after an earlier repair. Their finding takes priority over passing tests:\n{}", agents::untrusted(&n, "INHERITOR NOTE", note))).unwrap_or_default(),
             before.as_ref().map(verification_brief).unwrap_or_else(|| "not run".into()),
             if before_out.is_empty() { String::new() } else { agents::untrusted(&n, "verification output (tail)", &tail_lines(&before_out, 60)) },
             pack.text,
@@ -1283,6 +1286,10 @@ fn dangling_names(root: &std::path::Path, diff: &str) -> Vec<(String, String, us
 /// For decay issues: re-scan the affected files as they are now. If no use of the pattern remains,
 /// an earlier repair already resolved it.
 fn resolved_by_rescan(app: &App, id: &str, inv: &Inventory, issue: &Issue) -> Option<String> {
+    // A human reopened it: the static scan being clean is exactly what they disagreed with.
+    if issue.reopened_note.is_some() {
+        return None;
+    }
     let pattern = issue.pattern.as_ref()?;
     let paths: BTreeSet<&str> = inv.decay.iter().filter(|h| &h.pattern == pattern).map(|h| h.path.as_str()).collect();
     if paths.is_empty() {
@@ -1379,6 +1386,7 @@ async fn rediagnose(app: &App, id: &str, inv: &Inventory, failing: &Verification
             source: "verification".into(),
             status: "open".into(),
             pattern: matched.first().map(|g| g.pattern.clone()),
+            reopened_note: None,
         };
         save_issue(app, id, &issue)?;
         out.push(issue);

@@ -41,6 +41,24 @@ Model: `google/gemma-4-e4b`. There were 19 traced model calls, about 14 minutes 
 
 A manual check afterwards confirmed `curried()` works on the successor: `add3(1)(2)(3) == 6`.
 
+## What actually happened (run B, final binary)
+
+This was a fresh run on the final engine. During it, the Historian ran out of tokens while listing evidence, so the job
+**failed**. The fix was to cap every agent list with `maxItems`. The job was then **resumed**: clone, inventory,
+baseline and plan were skipped, and the agent steps re-ran. The Reviewer assessed all 12 findings.
+
+First restoration pass ("Fix essential"):
+
+| Attempt | Outcome |
+| --- | --- |
+| Iterable, attempt 1 | Reverted by the engine before review: `Iterable` and `deque` were both still used (lines 223 and 27) |
+| Iterable, attempt 2 | Applied. The failure moved from `fn/iters.py:2` to `fn/func.py:2` |
+| getargspec, rounds 1–3 | Six attempts, all refused: three by the dangling-name guard, two by the Gemma Reviewer (`spec.args - len(args)`), and **one by the behaviour probe** |
+| The probe catch | The Reviewer approved the patch. The original on Python 3.9 printed `3`, `6`, `6` for three `curried` probes, and the successor on 3.12 raised `TypeError` on all three. **Reverted.** |
+
+The pass ended with the successor honestly marked *restoring*, not *verified*: 1 error, and the original still
+untouched. Without the probe, a broken `curried()` could have been committed.
+
 ## Why the behaviour probe exists
 
 During development, a Gemma repair replaced `getargspec(f)` with `inspect.signature(f).parameters` and left

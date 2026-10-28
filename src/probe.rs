@@ -123,14 +123,15 @@ pub async fn run(app: &App, id: &str, issue: &Issue, diff: &str, files: &[String
         }
     }
     let task = format!(
-        "A repair was just applied for: {}\nThe existing tests pass or improved, but they may not exercise the changed code. Write 1-4 behaviour probes: short Python snippets that import the changed module(s) from the project root and CALL the changed functions/classes with small, deterministic inputs, then print() the results with repr(). Each probe must work on both an old Python ({legacy}) and a new one ({modern}): no f-strings, no walrus, no type hints, no network, no file writes, no randomness, no time. Prefer exercising code paths that the diff touched. Use the package's public import paths as shown in the files.\n\n{}{}",
+        "A repair was just applied for: {}{}\nThe existing tests pass or improved, but they may not exercise the changed code. Write 2-5 behaviour probes. Cover DISTINCT input shapes the changed code must handle (for example plain positional arguments, default values, *args, **kwargs, keyword-only arguments, empty or None inputs), not several variations of the same easy case. If a human note describes a behaviour difference, reproduce exactly that case. Probes are short Python snippets that import the changed module(s) from the project root and CALL the changed functions/classes with small, deterministic inputs, then print() the results with repr(). Each probe must work on both an old Python ({legacy}) and a new one ({modern}): no f-strings, no walrus, no type hints, no network, no file writes, no randomness, no time. Prefer exercising code paths that the diff touched. Use the package's public import paths as shown in the files.\n\n{}{}",
         issue.title,
+        issue.reopened_note.as_ref().map(|t| format!("\nHuman note from the inheritor: {}", agents::untrusted(&n, "INHERITOR NOTE", t))).unwrap_or_default(),
         agents::untrusted(&n, "DIFF", &redact(&truncate(diff, 8000))),
         pack
     );
     let schema = json!({"type": "object", "additionalProperties": false, "required": ["probes", "rationale"], "properties": {
         "rationale": {"type": "string"},
-        "probes": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["name", "code"], "properties": {"name": {"type": "string"}, "code": {"type": "string"}}}}
+        "probes": {"type": "array", "maxItems": 5, "items": {"type": "object", "additionalProperties": false, "required": ["name", "code"], "properties": {"name": {"type": "string"}, "code": {"type": "string"}}}}
     }});
     let spec = CallSpec { agent: "tester", purpose: format!("Behaviour probes: {}", crate::util::ellipsis(&issue.title, 70)), inheritance_id: Some(id), parent_id: parent, input_files: focus.iter().map(|f| f.0.clone()).collect(), task, schema, max_tokens: 1200 };
     let (v, call_id) = app.agents.call_json(spec, &n).await?;

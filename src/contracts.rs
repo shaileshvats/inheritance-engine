@@ -329,6 +329,9 @@ pub struct Issue {
     /// Decay pattern this issue groups, when it came from the static decay scan.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pattern: Option<String>,
+    /// Set when the inheritor reopened the issue with their own finding.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reopened_note: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

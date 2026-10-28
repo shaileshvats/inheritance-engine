@@ -89,6 +89,7 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/inheritances/{id}/diff", get(get_diff))
         .route("/inheritances/{id}/chat", get(get_chat).post(post_chat))
         .route("/inheritances/{id}/calls", get(list_calls))
+        .route("/inheritances/{id}/issues/{issue_id}/reopen", post(reopen_issue))
         .route("/calls/{id}", get(get_call))
         .route("/jobs/{id}/{action}", post(job_action))
         .fallback(|| async { ApiError(StatusCode::NOT_FOUND, "no such API route".into()) });
@@ -442,6 +443,36 @@ async fn post_chat(State(app): State<Arc<App>>, Path(id): Path<String>, Json(b):
     let lead = ChatMessage { id: new_id("msg"), role: "lead".into(), content: v["reply"].as_str().unwrap_or("").to_string(), at: now(), call_id: Some(call_id), suggested_action: action };
     app.db.put(Kind::Chat, &lead.id, Some(&id), &lead.at, &lead)?;
     Ok(Json(lead))
+}
+
+#[derive(Deserialize)]
+struct ReopenBody {
+    note: String,
+}
+
+/// The inheritor disagrees with a "repaired" (or failed/rejected) issue and reopens it with their own finding.
+async fn reopen_issue(State(app): State<Arc<App>>, Path((id, issue_id)): Path<(String, String)>, Json(b): Json<ReopenBody>) -> R<Issue> {
+    let note = b.note.trim();
+    if note.is_empty() {
+        return Err(bad("describe what you found, so the Restorer and Tester can act on it"));
+    }
+    let mut issue: Issue = app.db.get(Kind::Issue, &issue_id)?.ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "issue not found".into()))?;
+    if !app.db.list::<Issue>(Kind::Issue, Some(&id))?.iter().any(|i| i.id == issue_id) {
+        return Err(ApiError(StatusCode::NOT_FOUND, "issue not found for this inheritance".into()));
+    }
+    if issue.status == "open" {
+        return Err(bad("issue is already open"));
+    }
+    issue.status = "open".into();
+    issue.reopened_note = Some(truncate(note, 2000));
+    issue.diagnosis.push_str(&format!("\n\nReopened by the inheritor ({}): {}", now(), truncate(note, 2000)));
+    app.db.put(Kind::Issue, &issue.id, Some(&id), &issue.id, &issue)?;
+    let mut row = app.row(&id)?;
+    if row.stage == "verified" {
+        row.stage = Stage::Restoring.as_str().into();
+        app.save_row(&mut row)?;
+    }
+    Ok(Json(issue))
 }
 
 async fn list_calls(State(app): State<Arc<App>>, Path(id): Path<String>) -> R<Vec<AgentCall>> {
