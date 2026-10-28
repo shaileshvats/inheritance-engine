@@ -97,6 +97,21 @@ human finding that outranks passing tests, and the project can't be marked *veri
 successor says, accurately: *126 passed â€” not marked verified: the inheritor's reopened issue is unresolved.* I'd rather
 ship a tool that says that than one that shows a green badge.
 
+## Asking the original repository what still matters
+
+An inheritor doesn't only get code. They get the issue tracker too. fn.py still has 24 open issues on GitHub. A Mastra
+workflow (`triage-upstream-issues`) reads them and has Gemma compare each one against what the successor changed. As
+always, the engine has the last word: "addressed" only survives if it cites a repair or commit that really exists.
+
+In the real run, it found that upstream **#91, "ImportError: cannot import name Iterable from collections on Python
+3.10"**, is fixed by the successor, citing the exact repair and commit. The other seven it looked at are feature
+requests and questions that still stand. That's the inheritor's to-do list, inherited too.
+
+The Lead Engineer chat runs as a Mastra agent with read-only tools over the engine's findings. The local LM Studio build
+couldn't render Gemma 4's chat template with tools, so the companion probes the runtime at startup. When tool calling
+isn't available, it uses a Mastra workflow that calls the same tools deterministically and has Gemma answer with
+structured output. Same tools, same rules, and it works on today's runtime.
+
 ## The engine, not the model, has the last word
 
 Gemma 4 E4B runs comfortably on a 16 GB laptop, and it's genuinely useful. In my runs it wrote correct fixes and caught
@@ -157,8 +172,14 @@ all, and probes only test what the Tester thought to probe. A full run takes 15â
 
 ## Prize categories
 
-**Best Use of Gemma**: Gemma 4 runs every agent role, locally. I evaluated the other partner technologies and didn't
-integrate them in this build, so I'm not claiming those categories.
+- **Best Use of Gemma**: Gemma 4 runs every agent role, locally.
+- **Best Use of Mastra**: the Lead Engineer agent with engine tools, a grounded answer workflow, and the upstream-issue
+  triage workflow, all over Gemma, all used by the product.
+- *Sentry Agent Tracing and DigitalOcean:* <!-- Claim ONLY after a real trace screenshot / a real Droplet run exists. -->
+  The tracing and the deployment are built and tested locally. I'll list these only if real traces and a real Droplet
+  run make it into this post.
+
+Everything else was evaluated and not integrated; the repo has a per-category audit (`docs/partners`).
 
 ## License
 

@@ -138,7 +138,7 @@ validated locally; whether it has been deployed is recorded in [`docs/partners`]
 cargo test
 ```
 
-These are 45 unit and integration tests. They cover path traversal and symlink escapes, atomic edits, locked-down Docker
+The engine has 53 Rust tests and the Mastra companion has 17 vitest tests (`cd companion/mastra && npm test`). They cover path traversal and symlink escapes, atomic edits, locked-down Docker
 arguments, the cleared native environment, push being disabled and the original staying untouched, privacy policy
 enforcement, secret redaction, fabricated-citation detection, the regression and improvement rules, dangling-import
 detection, traceback parsing, test-summary parsing, and era-runtime selection. End-to-end runs against real repositories

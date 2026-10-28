@@ -67,5 +67,6 @@ Done on 2026-10-28 with Docker Desktop on macOS (arm64):
   from inside the container** (pytest collection error, the repository's real state on Python 3.12). The first agent
   call was then **refused by `local_only`**, because the host's LM Studio isn't loopback from inside the container.
   That is the intended behaviour. On a Droplet the model is Ollama on the same loopback.
+
 `network_mode: host` behaves differently on Docker Desktop than on Linux, so the full compose stack was **not** run
 end to end locally. It is meant for a Linux Droplet.

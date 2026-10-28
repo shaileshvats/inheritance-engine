@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased — 2026-10-28
+
+- Mastra companion (`companion/mastra`): Lead Engineer agent with engine tools, grounded `answer-lead-question`
+  workflow, `triage-upstream-issues` workflow with an engine-side citation check; engine integration (chat, durable
+  `triage` job, UI card, Inheritance Record). 17 vitest tests.
+- Sentry agent tracing (engine + companion), metadata only, enforced by scrubbing transport / span processor; tests
+  inject source and secrets to prove nothing leaks. Token usage recorded for every model call.
+- DigitalOcean deployment (compose + Dockerfiles + cloud-init), validated locally; not deployed.
+- Human-in-the-loop reopen of issues; reviewer rejections get one informed retry; humans outrank green tests.
+
 ## 0.1.0 — 2026-10-28 (Hacktoberfest Week 4 build)
 
 - Hunter: GitHub search (problem-first via the Hunter agent, curiosity-first), explainable signals, AI explanations.
