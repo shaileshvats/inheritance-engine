@@ -92,7 +92,7 @@ export class RestorationTab {
   }
 
   issueCard(i, busy) {
-    const checkbox = i.status === 'open' ? h('input', { type: 'checkbox', checked: this.selected.has(i.id), disabled: busy, 'aria-label': `Select ${i.title}` }) : null;
+    const checkbox = ['open', 'failed', 'rejected'].includes(i.status) ? h('input', { type: 'checkbox', checked: this.selected.has(i.id), disabled: busy, 'aria-label': `Select ${i.title}` }) : null;
     if (checkbox) checkbox.addEventListener('change', () => {
       if (checkbox.checked) this.selected.add(i.id); else this.selected.delete(i.id);
       this.controls.invalidate(); this.controls.update(this.d);

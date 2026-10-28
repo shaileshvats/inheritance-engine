@@ -848,7 +848,8 @@ pub async fn restore(ctx: &mut JobCtx) -> anyhow::Result<()> {
     };
     let mut todo: Vec<Issue> = issues_of(&app, &id)
         .into_iter()
-        .filter(|i| matches!(i.status.as_str(), "open" | "failed"))
+        // Rejected issues are retried only when the user selects them explicitly.
+        .filter(|i| matches!(i.status.as_str(), "open" | "failed") || (mode == "selected" && i.status == "rejected"))
         .filter(|i| match mode.as_str() {
             "fix_all" => true,
             "selected" => selected.contains(&i.id),
@@ -941,8 +942,14 @@ pub async fn restore(ctx: &mut JobCtx) -> anyhow::Result<()> {
     ctx.begin("final verification").await?;
     let final_v = if exec_mode(&row) != ExecMode::None { Some(run_suite(&app, &id, "after restoration", None).await?) } else { None };
     let passed = final_v.as_ref().map(|v| v.status == "passed").unwrap_or(false);
-    ctx.finish("final verification", "done", final_v.as_ref().map(verification_brief).unwrap_or_else(|| "not run (execution disabled)".into()));
-    app.set_stage(&id, if passed { Stage::Verified } else { Stage::Restoring })?;
+    // A finding the inheritor reopened outranks green tests until it is repaired.
+    let human_open: Vec<String> = issues_of(&app, &id).into_iter().filter(|i| i.reopened_note.is_some() && i.status != "repaired").map(|i| i.title).collect();
+    let mut detail = final_v.as_ref().map(verification_brief).unwrap_or_else(|| "not run (execution disabled)".into());
+    if passed && !human_open.is_empty() {
+        detail.push_str(&format!(" — not marked verified: the inheritor's reopened issue is unresolved ({})", human_open.join("; ")));
+    }
+    ctx.finish("final verification", "done", detail);
+    app.set_stage(&id, if passed && human_open.is_empty() { Stage::Verified } else { Stage::Restoring })?;
 
     ctx.begin("inheritance notice").await?;
     let detail = write_inheritance_notice(&app, &id)?;
@@ -1101,7 +1108,8 @@ async fn repair_issue(app: &App, id: &str, inv: &Inventory, mut issue: Issue, be
         repair.review = Some(review.clone());
         if review.verdict != "approve" {
             gitops::revert_worktree(&successor)?;
-            if review.verdict == "request_changes" && attempt == 0 {
+            // One more attempt with the reviewer's concerns, whether it asked for changes or rejected outright.
+            if attempt == 0 && !review.concerns.is_empty() {
                 feedback = format!("\nThe Reviewer requested changes to your previous attempt:\n- {}\nAddress these concerns.", review.concerns.join("\n- "));
                 repair.status = "rejected".into();
                 repair.note = Some("Reviewer requested changes; retrying once".into());
@@ -1448,7 +1456,8 @@ pub async fn verify_job(ctx: &mut JobCtx) -> anyhow::Result<()> {
     let custom = ctx.job.params["command"].as_str().map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
     let v = run_suite(&app, &id, if custom.is_some() { "manual" } else { "check" }, custom.as_deref()).await?;
     ctx.finish("verify", "done", verification_brief(&v));
-    if v.status == "passed" {
+    let human_open = issues_of(&app, &id).iter().any(|i| i.reopened_note.is_some() && i.status != "repaired");
+    if v.status == "passed" && !human_open {
         app.set_stage(&id, Stage::Verified)?;
     }
     Ok(())
