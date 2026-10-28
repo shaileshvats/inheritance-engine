@@ -572,6 +572,13 @@ pub async fn investigate(ctx: &mut JobCtx) -> anyhow::Result<()> {
             let gids: Vec<String> = it["decay_groups"].as_array().map(|a| a.iter().filter_map(|g| g.as_str().map(|s| s.trim().to_string())).collect()).unwrap_or_default();
             let matched: Vec<&DecayGroup> = groups.iter().filter(|g| gids.contains(&g.gid)).collect();
             let mut ev = parse_evidence(&it["evidence"]);
+            // An issue whose own citations land on decay hits covers those groups even if it did not name them.
+            let mut matched = matched;
+            for g in &groups {
+                if !matched.iter().any(|m| m.gid == g.gid) && g.hits.iter().any(|h| ev.iter().any(|e| e.path == h.path && e.start_line <= h.line + 1 && h.line <= e.end_line.max(e.start_line) + 1)) {
+                    matched.push(g);
+                }
+            }
             for g in &matched {
                 covered.insert(g.gid.clone());
                 for h in g.hits.iter().take(2) {
@@ -697,7 +704,7 @@ pub async fn investigate(ctx: &mut JobCtx) -> anyhow::Result<()> {
             body.push_str(&format!("- reviewer on {}: {} — {}\n", ch.target, ch.verdict, ch.reason));
         }
         let task = format!(
-            "Write the investigation summary for the user who just inherited this project. In markdown (max ~250 words): what the creator built (only as far as evidence shows), how it works, which components are essential, its current health (use the verification result exactly; do not claim it works unless tests passed), the important problems, where the Reviewer disagreed, and what is unknown. Then list 2-4 concrete next actions.\n\nEngine facts:\n{}\n{}",
+            "Write the investigation summary for the user who just inherited this project. In markdown (max ~250 words): what the creator built (only as far as evidence shows), how it works, which components are essential, its current health (use the verification result exactly; do not claim it works unless tests passed), the important problems, where the Reviewer disagreed (refer to the Reviewer and other specialists in the third person; you are the Lead), and what is unknown. Then list 2-4 concrete next actions.\n\nEngine facts:\n{}\n{}",
             facts_block(&row, &inv, baseline.as_ref()),
             agents::untrusted(&n, "TEAM FINDINGS (contain repository-derived text)", &body)
         );
@@ -858,6 +865,14 @@ pub async fn restore(ctx: &mut JobCtx) -> anyhow::Result<()> {
         ctx.begin(&step).await?;
         // A repair job may be resumed; never stack edits on uncommitted changes.
         gitops::revert_worktree(&successor)?;
+        if let Some(by) = resolved_by_rescan(&app, &id, &inv, &issue) {
+            let mut issue = issue;
+            issue.status = "repaired".into();
+            issue.diagnosis.push_str(&format!("\n\nResolved by an earlier repair: {by}"));
+            save_issue(&app, &id, &issue)?;
+            ctx.finish(&step, "skipped", format!("already resolved — {by}"));
+            continue;
+        }
         let (status, detail, after) = repair_issue(&app, &id, &inv, issue, current.clone(), ctx).await?;
         if let Some(a) = after {
             current = Some(a);
@@ -1200,6 +1215,26 @@ fn dangling_names(root: &std::path::Path, diff: &str) -> Vec<(String, String, us
         }
     }
     out
+}
+
+/// For decay issues: re-scan the affected files as they are now. If no use of the pattern remains,
+/// an earlier repair already resolved it.
+fn resolved_by_rescan(app: &App, id: &str, inv: &Inventory, issue: &Issue) -> Option<String> {
+    let pattern = issue.pattern.as_ref()?;
+    let paths: BTreeSet<&str> = inv.decay.iter().filter(|h| &h.pattern == pattern).map(|h| h.path.as_str()).collect();
+    if paths.is_empty() {
+        return None;
+    }
+    let root = app.layout(id).successor();
+    let files: Vec<inventory::SourceFile> = paths
+        .iter()
+        .filter_map(|p| {
+            let text = std::fs::read_to_string(safe_join(&root, p).ok()?).ok()?;
+            Some(inventory::SourceFile { path: p.to_string(), size: text.len() as u64, lang: inventory::language_of(p), text: Some(text) })
+        })
+        .collect();
+    let remaining = inventory::scan_decay(&files).into_iter().filter(|h| &h.pattern == pattern).count();
+    (remaining == 0).then(|| format!("a static re-scan of {} finds no remaining '{}'", paths.into_iter().collect::<Vec<_>>().join(", "), pattern))
 }
 
 /// (path, first_line, last_line) of the new-side hunks in a unified diff.

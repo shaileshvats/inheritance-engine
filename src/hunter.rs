@@ -236,7 +236,7 @@ pub async fn explain(gh: &GitHub, agents: &Agents, full_name: &str) -> anyhow::R
         "archived": c.archived, "license": c.license, "size_kb": c.size_kb
     });
     let task = format!(
-        "Explain whether this repository could be worth inheriting. Judge three separate dimensions without merging them into a score: historical value (what it represents or preserved), present usefulness (does it solve a problem people still have), evolution potential (could it be restored or extended). Popularity and inactivity are context, not verdicts. List concrete caveats. If the README is empty, say what cannot be known.\n\nGitHub metadata (trusted):\n{}\n\n{}",
+        "Explain whether this repository could be worth inheriting. Judge three separate dimensions without merging them into a score: historical value (what it represents or preserved), present usefulness (does it solve a problem people still have), evolution potential (could it be restored or extended). For each dimension write one or two sentences that point to concrete evidence from the metadata or README; never answer with a rating word such as High/Medium/Low. Popularity and inactivity are context, not verdicts. List concrete caveats. If the README is empty, say what cannot be known.\n\nGitHub metadata (trusted):\n{}\n\n{}",
         serde_json::to_string_pretty(&meta)?,
         agents::untrusted(&n, "README", if readme_excerpt.is_empty() { "(no README found)" } else { &readme_excerpt })
     );
