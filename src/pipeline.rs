@@ -445,7 +445,7 @@ pub async fn investigate(ctx: &mut JobCtx) -> anyhow::Result<()> {
                     by_count.entry(p).or_insert(100);
                 }
                 let mut v: Vec<(String, usize)> = by_count.into_iter().collect();
-                v.sort_by(|a, b| b.1.cmp(&a.1));
+                v.sort_by_key(|e| std::cmp::Reverse(e.1));
                 rest = v.into_iter().map(|(p, _)| p).take(4).collect();
                 fallback.push("restorer");
             }
@@ -853,7 +853,7 @@ pub async fn restore(ctx: &mut JobCtx) -> anyhow::Result<()> {
             _ => i.category == "essential",
         })
         .collect();
-    todo.sort_by(|a, b| (a.category != "essential", sev(&a.severity)).cmp(&(b.category != "essential", sev(&b.severity))));
+    todo.sort_by_key(|i| (i.category != "essential", sev(&i.severity)));
     if todo.is_empty() {
         ctx.finish("plan", "done", "no open issues match this request");
         return Ok(());
@@ -1266,7 +1266,7 @@ fn dangling_names(root: &std::path::Path, diff: &str) -> Vec<(String, String, us
     for (path, (removed, added)) in per_file {
         let Ok(full) = safe_join(root, &path) else { continue };
         let Ok(text) = std::fs::read_to_string(full) else { continue };
-        let still_imported: BTreeSet<String> = text.lines().flat_map(|l| names_of(l)).collect();
+        let still_imported: BTreeSet<String> = text.lines().flat_map(names_of).collect();
         for name in removed.difference(&added).filter(|n| !still_imported.contains(*n)) {
             let word = regex::Regex::new(&format!(r"\b{}\b", regex::escape(name))).unwrap();
             if let Some((i, _)) = text.lines().enumerate().find(|(_, l)| {

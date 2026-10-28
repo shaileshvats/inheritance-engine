@@ -638,7 +638,7 @@ pub fn build(input: InventoryInput) -> anyhow::Result<(Inventory, Passport)> {
         e.1 += f.text.as_ref().map(|t| t.lines().count()).unwrap_or(0);
     }
     let mut languages: Vec<LanguageStat> = lang_stats.into_iter().map(|(l, (files, lines))| LanguageStat { language: l.into(), files, lines }).collect();
-    languages.sort_by(|a, b| b.lines.cmp(&a.lines));
+    languages.sort_by_key(|l| std::cmp::Reverse(l.lines));
 
     let manifests: Vec<Manifest> = files.iter().filter_map(|f| manifest_kind(&f.path).map(|k| Manifest { path: f.path.clone(), kind: k.into() })).collect();
 
