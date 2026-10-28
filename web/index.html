@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Inheritance Engine</title>
+  <meta name="description" content="Find forgotten software. Understand it. Restore it. Give it a future.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='3' width='26' height='26' rx='6' fill='%231f6f6b'/%3E%3Cpath d='M10 22V10h4v12zm8 0V14h4v8z' fill='%23f6f4ef'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/styles.css">
+  <script>
+    // Apply the saved theme before first paint to avoid a flash.
+    try { var t = localStorage.getItem('ie-theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="topbar" role="banner">
+    <a class="brand" href="#/" aria-label="Inheritance Engine, dashboard">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32" width="26" height="26"><rect x="2" y="2" width="28" height="28" rx="7" class="brand-mark-bg"/><path d="M9 23V9h4.5v14zm9.5 0V14H23v9z" class="brand-mark-fg"/></svg>
+      </span>
+      <span class="brand-text">
+        <span class="brand-name">Inheritance Engine</span>
+        <span class="brand-tagline">Find it. Understand it. Restore it. Give it a future.</span>
+      </span>
+    </a>
+    <div class="topbar-status" id="status-chips" aria-label="System status"></div>
+    <button class="icon-btn" id="theme-toggle" type="button" aria-label="Switch colour theme">
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z" fill="currentColor"/></svg>
+    </button>
+  </header>
+  <main id="main" tabindex="-1"></main>
+  <div id="sr-announcer" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
