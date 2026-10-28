@@ -171,21 +171,22 @@ pub fn status_for(exit_code: Option<i32>, timed_out: bool, summary: Option<&Test
     }
 }
 
-/// True when `after` is worse than `before` (fewer passes or more failures/errors).
+/// True when `after` is worse than `before`. Passing tests dominate: a collection error hides every test,
+/// so going from "1 error, 0 passed" to "124 passed, 2 failed" is progress, not a regression.
 pub fn regressed(before: Option<&TestSummary>, after: Option<&TestSummary>, before_status: &str, after_status: &str) -> bool {
     match (before, after) {
-        (Some(b), Some(a)) => a.passed < b.passed || a.failed + a.errors > b.failed + b.errors,
+        (Some(b), Some(a)) => a.passed < b.passed || (a.passed == b.passed && a.failed + a.errors > b.failed + b.errors),
         _ => before_status == "passed" && after_status != "passed",
     }
 }
 
-/// True when `after` is measurably better than `before`.
+/// True when `after` is measurably better than `before` (more passing tests, or equal and fewer failures).
 pub fn improved(before: Option<&TestSummary>, after: Option<&TestSummary>, before_status: &str, after_status: &str) -> bool {
     if after_status == "passed" && before_status != "passed" {
         return true;
     }
     match (before, after) {
-        (Some(b), Some(a)) => a.passed > b.passed || a.failed + a.errors < b.failed + b.errors,
+        (Some(b), Some(a)) => a.passed > b.passed || (a.passed == b.passed && a.failed + a.errors < b.failed + b.errors),
         _ => false,
     }
 }
@@ -273,7 +274,9 @@ mod tests {
     fn improvement_detection() {
         let b = TestSummary { passed: 0, failed: 0, errors: 1, skipped: 0 };
         assert!(!improved(Some(&b), Some(&b), "failed", "failed"));
-        assert!(improved(Some(&b), Some(&TestSummary { passed: 120, failed: 6, errors: 0, skipped: 0 }), "failed", "failed"));
+        let a = TestSummary { passed: 124, failed: 2, errors: 0, skipped: 0 };
+        assert!(improved(Some(&b), Some(&a), "failed", "failed"));
+        assert!(!regressed(Some(&b), Some(&a), "failed", "failed"));
     }
 
     #[test]

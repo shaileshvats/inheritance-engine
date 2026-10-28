@@ -868,7 +868,7 @@ pub async fn restore(ctx: &mut JobCtx) -> anyhow::Result<()> {
     // Fixing one problem often uncovers the next (e.g. an import error hides later failures).
     // While verification still fails, let the Restorer diagnose the new output and repair again.
     if mode != "selected" && exec_mode(&row) != ExecMode::None {
-        for round in 1..=2 {
+        for round in 1..=3 {
             let Some(cur) = current.clone() else { break };
             if !matches!(cur.status.as_str(), "failed" | "error") || cur.output_tail.is_empty() {
                 break;
@@ -991,6 +991,25 @@ async fn repair_issue(app: &App, id: &str, inv: &Inventory, mut issue: Issue, be
         }
         repair.files = applied.files.clone();
         repair.diff = truncate(&diff, 60_000);
+
+        // Deterministic guard: an import the diff removed must not still be used in that file.
+        let dangling = dangling_names(&successor, &diff);
+        if !dangling.is_empty() {
+            let why = dangling.iter().map(|(p, name, line)| format!("'{name}' is no longer imported in {p} but is still used at line {line}")).collect::<Vec<_>>().join("; ");
+            gitops::revert_worktree(&successor)?;
+            repair.status = "reverted".into();
+            repair.note = Some(format!("Engine check before review: {why}; change reverted."));
+            app.db.put(Kind::Repair, &repair.id, Some(id), &repair.created_at, &repair)?;
+            if attempt == 0 {
+                feedback = format!("\nYour previous edits were reverted by the engine before review: {why}. Keep every name the file still uses importable, and update all its uses if you rename an API.");
+                repair.id = new_id("rep");
+                repair.created_at = now();
+                continue;
+            }
+            issue.status = "failed".into();
+            save_issue(app, id, &issue)?;
+            return Ok(("reverted".into(), why, before.clone()));
+        }
 
         // Independent review of the actual diff.
         let rn = agents::nonce();
@@ -1131,6 +1150,56 @@ async fn repair_issue(app: &App, id: &str, inv: &Inventory, mut issue: Issue, be
     issue.status = "failed".into();
     save_issue(app, id, &issue)?;
     Ok(("failed".into(), repair.note.clone().unwrap_or_else(|| "repair failed".into()), None))
+}
+
+/// Python names whose import a diff removed but which the edited file still uses: (path, name, line).
+fn dangling_names(root: &std::path::Path, diff: &str) -> Vec<(String, String, usize)> {
+    let from_imp = regex::Regex::new(r"^\s*from\s+[\w.]+\s+import\s+\(?([^#]+)").unwrap();
+    let plain_imp = regex::Regex::new(r"^\s*import\s+([^#]+)").unwrap();
+    let names_of = |line: &str| -> Vec<String> {
+        let list = if let Some(c) = from_imp.captures(line) { c[1].to_string() } else if let Some(c) = plain_imp.captures(line) { c[1].to_string() } else { return vec![] };
+        list.replace([')', '\\'], " ")
+            .split(',')
+            .filter_map(|n| {
+                let parts: Vec<&str> = n.split_whitespace().collect();
+                let bound = if parts.len() == 3 && parts[1] == "as" { parts[2] } else { *parts.first()? };
+                let bound = bound.split('.').next()?;
+                (!bound.is_empty() && bound != "*").then(|| bound.to_string())
+            })
+            .collect()
+    };
+    let mut per_file: BTreeMap<String, (BTreeSet<String>, BTreeSet<String>)> = BTreeMap::new();
+    let mut file = String::new();
+    for line in diff.lines() {
+        if let Some(p) = line.strip_prefix("+++ b/") {
+            file = p.to_string();
+            continue;
+        }
+        if line.starts_with("---") || line.starts_with("+++") || !file.ends_with(".py") {
+            continue;
+        }
+        if let Some(l) = line.strip_prefix('-') {
+            per_file.entry(file.clone()).or_default().0.extend(names_of(l));
+        } else if let Some(l) = line.strip_prefix('+') {
+            per_file.entry(file.clone()).or_default().1.extend(names_of(l));
+        }
+    }
+    let mut out = Vec::new();
+    for (path, (removed, added)) in per_file {
+        let Ok(full) = safe_join(root, &path) else { continue };
+        let Ok(text) = std::fs::read_to_string(full) else { continue };
+        let still_imported: BTreeSet<String> = text.lines().flat_map(|l| names_of(l)).collect();
+        for name in removed.difference(&added).filter(|n| !still_imported.contains(*n)) {
+            let word = regex::Regex::new(&format!(r"\b{}\b", regex::escape(name))).unwrap();
+            if let Some((i, _)) = text.lines().enumerate().find(|(_, l)| {
+                let t = l.trim_start();
+                !t.starts_with('#') && !t.starts_with("import ") && !t.starts_with("from ") && word.is_match(l)
+            }) {
+                out.push((path.clone(), name.clone(), i + 1));
+            }
+        }
+    }
+    out
 }
 
 /// (path, first_line, last_line) of the new-side hunks in a unified diff.
@@ -1313,6 +1382,20 @@ mod tests {
         assert!(apply_edits(d.path(), &e).err().unwrap()[0].contains("not an existing file"));
         let e = vec![json!({"path": ".git/config", "find": "a", "replace": "b", "all_occurrences": false})];
         assert!(apply_edits(d.path(), &e).is_err());
+    }
+
+    #[test]
+    fn detects_dangling_imports() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(d.path().join("fn")).unwrap();
+        // The real fn.py failure mode: Iterable moved to collections.abc but deque dropped.
+        std::fs::write(d.path().join("fn/iters.py"), "from collections.abc import Iterable\n\ndef consume(i):\n    deque(i, maxlen=0)\n").unwrap();
+        let diff = "--- a/fn/iters.py\n+++ b/fn/iters.py\n@@ -1 +1 @@\n-from collections import deque, Iterable\n+from collections.abc import Iterable\n";
+        assert_eq!(dangling_names(d.path(), diff), vec![("fn/iters.py".to_string(), "deque".to_string(), 4)]);
+        // Correct fix: nothing dangling.
+        std::fs::write(d.path().join("fn/iters.py"), "from collections import deque\nfrom collections.abc import Iterable\n\ndef consume(i):\n    deque(i, maxlen=0)\n").unwrap();
+        let diff2 = "--- a/fn/iters.py\n+++ b/fn/iters.py\n@@ -1 +1,2 @@\n-from collections import deque, Iterable\n+from collections import deque\n+from collections.abc import Iterable\n";
+        assert!(dangling_names(d.path(), diff2).is_empty());
     }
 
     #[test]

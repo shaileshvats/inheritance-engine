@@ -238,9 +238,15 @@ impl JobCtx {
         }
     }
 
+    /// Add a step if missing. Steps discovered mid-run are inserted before the closing steps so the list reads in order.
     pub fn add_step(&mut self, name: &str) {
         if !self.job.steps.iter().any(|s| s.name == name) {
-            self.job.steps.push(JobStep { name: name.into(), status: "pending".into(), detail: None, started_at: None, finished_at: None });
+            let step = JobStep { name: name.into(), status: "pending".into(), detail: None, started_at: None, finished_at: None };
+            let closing = ["final verification", "inheritance notice"];
+            match self.job.steps.iter().position(|s| closing.contains(&s.name.as_str()) && s.status == "pending") {
+                Some(i) if !closing.contains(&name) => self.job.steps.insert(i, step),
+                _ => self.job.steps.push(step),
+            }
             self.save();
         }
     }
