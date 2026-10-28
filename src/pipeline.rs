@@ -15,7 +15,7 @@ use crate::gitops;
 use crate::inventory;
 use crate::sandbox::{self, RunRequest};
 use crate::security::{redact, safe_join};
-use crate::util::{new_id, now, tail_lines, truncate};
+use crate::util::{ellipsis, new_id, now, tail_lines, truncate};
 use crate::verify;
 
 pub const INVESTIGATE_STEPS: &[&str] = &[
@@ -858,7 +858,7 @@ pub async fn restore(ctx: &mut JobCtx) -> anyhow::Result<()> {
         ctx.finish("plan", "done", "no open issues match this request");
         return Ok(());
     }
-    let step_names: Vec<String> = todo.iter().map(|i| format!("repair: {}", truncate(&i.title, 60).replace('\n', " "))).collect();
+    let step_names: Vec<String> = todo.iter().map(|i| format!("repair: {}", ellipsis(&i.title, 60))).collect();
     for s in &step_names {
         ctx.add_step(s);
     }
@@ -915,7 +915,7 @@ pub async fn restore(ctx: &mut JobCtx) -> anyhow::Result<()> {
             }
             ctx.finish(&step, "done", format!("{} new issue(s) found in the failing output", wanted.len()));
             for issue in wanted {
-                let rstep = format!("repair: {}", truncate(&issue.title, 60).replace('\n', " "));
+                let rstep = format!("repair: {}", ellipsis(&issue.title, 60));
                 ctx.begin(&rstep).await?;
                 gitops::revert_worktree(&successor)?;
                 let (status, detail, after) = repair_issue(&app, &id, &inv, issue, current.clone(), ctx).await?;
@@ -1005,7 +1005,7 @@ async fn repair_issue(app: &App, id: &str, inv: &Inventory, mut issue: Issue, be
             pack.text,
             feedback
         );
-        let spec = CallSpec { agent: "restorer", purpose: format!("Patch: {}", truncate(&issue.title, 80)), inheritance_id: Some(id), parent_id: parent.clone(), input_files: pack.files.clone(), task, schema: agents::restorer_patch_schema(), max_tokens: 2500 };
+        let spec = CallSpec { agent: "restorer", purpose: format!("Patch: {}", ellipsis(&issue.title, 80)), inheritance_id: Some(id), parent_id: parent.clone(), input_files: pack.files.clone(), task, schema: agents::restorer_patch_schema(), max_tokens: 2500 };
         let (v, patch_call) = match app.agents.call_json(spec, &n).await {
             Ok(r) => r,
             Err(e) => {
@@ -1065,7 +1065,7 @@ async fn repair_issue(app: &App, id: &str, inv: &Inventory, mut issue: Issue, be
             agents::untrusted(&rn, "DIFF (successor working tree)", &redact(&truncate(&diff, 14_000))),
             if before_out.is_empty() { String::new() } else { agents::untrusted(&rn, "verification output before (tail)", &tail_lines(&before_out, 40)) },
         );
-        let rspec = CallSpec { agent: "reviewer", purpose: format!("Review repair: {}", truncate(&issue.title, 80)), inheritance_id: Some(id), parent_id: Some(patch_call.clone()), input_files: applied.files.clone(), task: rtask, schema: agents::reviewer_repair_schema(), max_tokens: 900 };
+        let rspec = CallSpec { agent: "reviewer", purpose: format!("Review repair: {}", ellipsis(&issue.title, 80)), inheritance_id: Some(id), parent_id: Some(patch_call.clone()), input_files: applied.files.clone(), task: rtask, schema: agents::reviewer_repair_schema(), max_tokens: 900 };
         let (rv, review_call) = match app.agents.call_json(rspec, &rn).await {
             Ok(r) => r,
             Err(e) => {
@@ -1116,7 +1116,7 @@ async fn repair_issue(app: &App, id: &str, inv: &Inventory, mut issue: Issue, be
         }
 
         // Verify the change for real before keeping it.
-        let after = if exec_mode(&row) != ExecMode::None { Some(run_suite(app, id, &format!("after {}", truncate(&issue.title, 40)), None).await?) } else { None };
+        let after = if exec_mode(&row) != ExecMode::None { Some(run_suite(app, id, &format!("after {}", ellipsis(&issue.title, 40)), None).await?) } else { None };
         let mut progress_note: Option<String> = None;
         if let Some(a) = &after {
             repair.verification_after = Some(a.id.clone());
@@ -1201,7 +1201,7 @@ async fn repair_issue(app: &App, id: &str, inv: &Inventory, mut issue: Issue, be
         }).unwrap_or_else(|| "not run".into());
         let message = format!(
             "Restore: {}\n\n{}\n\nIssue: {}\nReviewed-by: Reviewer agent ({}) - verdict approve, regression risk {}\nVerification: {} -> {}{}\nInheritance-Engine-Repair: {}\nOriginal-Commit: {}",
-            truncate(&issue.title, 72),
+            ellipsis(&issue.title, 72),
             truncate(&repair.rationale, 600),
             issue.id,
             app.cfg.model_for("reviewer"),

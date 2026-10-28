@@ -132,7 +132,7 @@ pub async fn run(app: &App, id: &str, issue: &Issue, diff: &str, files: &[String
         "rationale": {"type": "string"},
         "probes": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["name", "code"], "properties": {"name": {"type": "string"}, "code": {"type": "string"}}}}
     }});
-    let spec = CallSpec { agent: "tester", purpose: format!("Behaviour probes: {}", truncate(&issue.title, 70)), inheritance_id: Some(id), parent_id: parent, input_files: focus.iter().map(|f| f.0.clone()).collect(), task, schema, max_tokens: 1200 };
+    let spec = CallSpec { agent: "tester", purpose: format!("Behaviour probes: {}", crate::util::ellipsis(&issue.title, 70)), inheritance_id: Some(id), parent_id: parent, input_files: focus.iter().map(|f| f.0.clone()).collect(), task, schema, max_tokens: 1200 };
     let (v, call_id) = app.agents.call_json(spec, &n).await?;
     let probes: Vec<(String, String)> = v["probes"]
         .as_array()

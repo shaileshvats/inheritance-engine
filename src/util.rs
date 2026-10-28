@@ -19,6 +19,15 @@ pub fn truncate(s: &str, max: usize) -> String {
     format!("{}\n…[truncated {} bytes]", &s[..end], s.len() - end)
 }
 
+/// Shorten a human-facing label to `max` characters with an ellipsis (no byte counts).
+pub fn ellipsis(s: &str, max: usize) -> String {
+    let s = s.trim().replace('\n', " ");
+    if s.chars().count() <= max {
+        return s;
+    }
+    format!("{}…", s.chars().take(max.saturating_sub(1)).collect::<String>().trim_end())
+}
+
 /// Keep the last `max_lines` lines of `s`.
 pub fn tail_lines(s: &str, max_lines: usize) -> String {
     let lines: Vec<&str> = s.lines().collect();
