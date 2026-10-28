@@ -83,6 +83,20 @@ the repair is reverted and sent back with the evidence.
 
 The ghost gets a vote.
 
+## And then a human still found one
+
+In a later run, the probe caught a broken fix (original `3`, `6`, `6`, successor `TypeError`) and reverted it. On the
+next pass a different fix went green: 126 tests, 3 of 3 probes preserved. I almost moved on.
+
+Then I tried `curried` on a function with `*args`. The original on Python 3.9 called through after two arguments. The
+successor waited forever for a third. `signature(f).parameters` counts `*args`, and the old `getargspec(f).args` never
+did. All three of the Tester's probes had used plain two- and three-argument functions.
+
+So the human gets a vote too. Any issue can be reopened with your own finding. The Restorer and Tester receive it as a
+human finding that outranks passing tests, and the project can't be marked *verified* while it's open. Today the
+successor says, accurately: *126 passed — not marked verified: the inheritor's reopened issue is unresolved.* I'd rather
+ship a tool that says that than one that shows a green badge.
+
 ## The engine, not the model, has the last word
 
 Gemma 4 E4B runs comfortably on a 16 GB laptop, and it's genuinely useful. In my runs it wrote correct fixes and caught

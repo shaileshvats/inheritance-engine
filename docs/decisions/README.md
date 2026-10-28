@@ -46,6 +46,14 @@ Each of these was added after a real run went wrong, not in anticipation:
 3. **Dangling imports.** Patches that drop an import the file still uses are reverted before review.
 4. **Behaviour probes.** A `getargspec` fix passed all 126 tests and still broke `curried()`, which no test calls.
    Probes now compare the successor on Python 3.12 against the original on Python 3.9.
+5. **Bounded lists.** A Historian call ran out of tokens while listing evidence and produced invalid JSON. Every schema
+   array now has `maxItems`, which LM Studio's constrained decoding enforces. Truncation is reported as truncation.
+6. **Era runtime ignores guarded code.** A version-guarded `string.letters` once selected Python 2.7 as the era
+   runtime, which made probes inconclusive.
+7. **Humans outrank green tests.** A fix with 126 passing tests and 3/3 preserved probes still changed `curried()` for
+   variadic functions. The inheritor can now reopen an issue with their finding. An unresolved reopened issue blocks
+   the *verified* stage, and Tester probes must cover distinct input shapes.
+8. **Reviewer rejections get one informed retry**, carrying the reviewer's concrete concerns.
 
 ## D7 — Prize categories
 

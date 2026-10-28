@@ -59,6 +59,32 @@ First restoration pass ("Fix essential"):
 The pass ended with the successor honestly marked *restoring*, not *verified*: 1 error, and the original still
 untouched. Without the probe, a broken `curried()` could have been committed.
 
+**Second pass** (the user presses *Fix essential* again). After one dangling-name revert and one Reviewer rejection,
+a fix was applied: **126 passed**, and the behaviour probe showed 3/3 preserved on Python 3.9 vs 3.12. Stage: *verified*.
+
+**Then a human looked.** The kept fix replaced `len(getargspec(f).args)` with `len(signature(f).parameters)`. A manual
+differential check (same method as the probe, different inputs) showed the difference:
+
+```
+                          original (3.9)     successor (3.12)
+plain(1)(2)               3                  3
+star(1)(2)  [*rest]       (1, 2, ())         still curried, waiting
+kw(1)(2)    [**opts]      (1, 2, [])         still curried, waiting
+```
+
+`signature().parameters` counts `*args`/`**kwargs`, and `getargspec().args` did not. The Tester's three probes had
+all used plain positional functions. In response:
+
+- **Reopen with your finding.** The issue was reopened from the UI with that note. The Restorer and Tester receive it
+  as a human finding that takes priority over passing tests, and the static re-scan no longer auto-closes the issue.
+- **Human findings block "verified".** With the issue unresolved, the final step reads *"126 passed — not marked
+  verified: the inheritor's reopened issue is unresolved"*, and the stage stays *restoring*.
+- **Probes must cover distinct input shapes:** defaults, `*args`, `**kwargs`, keyword-only, empty inputs.
+
+On the reopened issue, Gemma 4 E4B as Restorer did not find a correct fix in two passes. The Reviewer rejected a patch
+that invented a nonexistent attribute (`f.prflags`). As of this writing the successor is honestly *restoring*: tests
+green, and one human-reported behaviour difference open. See the next section for the larger-model attempt.
+
 ## Why the behaviour probe exists
 
 During development, a Gemma repair replaced `getargspec(f)` with `inspect.signature(f).parameters` and left
