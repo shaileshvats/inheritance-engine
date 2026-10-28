@@ -83,7 +83,12 @@ all used plain positional functions. In response:
 
 On the reopened issue, Gemma 4 E4B as Restorer did not find a correct fix in two passes. The Reviewer rejected a patch
 that invented a nonexistent attribute (`f.prflags`). As of this writing the successor is honestly *restoring*: tests
-green, and one human-reported behaviour difference open. See the next section for the larger-model attempt.
+green, and one human-reported behaviour difference open.
+
+**Larger-model attempt.** The plan was to give the Restorer Gemma 4 12B QAT (`IE_MODEL_RESTORER=google/gemma-4-12b-qat`).
+The file downloaded and its SHA-256 matches Hugging Face, but LM Studio (llama.cpp engine 2.13.0) refused to load it next
+to the E4B (about 9.4 GB needed). On its own it failed with a generic "Failed to load model", with about 17% of RAM free and
+heavy swap. It was not run. On a machine with more memory, or a newer LM Studio runtime, this is a one-variable change.
 
 ## Why the behaviour probe exists
 
