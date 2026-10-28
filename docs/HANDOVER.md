@@ -37,10 +37,14 @@ pattern-based.
 
 ## 7. Sponsor integrations actually implemented
 
-- **Gemma**: Gemma 4 E4B runs every agent role, locally, through LM Studio. Gemma 4 12B QAT was also downloaded and
-  can be assigned to any role. This is genuine, central use.
-- **None of the others.** Mastra, Temporal, Sentry, Render, DigitalOcean and the rest were evaluated and not integrated
-  (see decision log D2, D3, D7). Claiming them would be false. Arduino is excluded because no hardware is available.
+See [partners/README.md](partners/README.md) for the full audit.
+
+- **Gemma: implemented.** Gemma 4 E4B runs every agent role, locally.
+- **Mastra: implemented.** Lead Engineer agent, grounded answer workflow, and upstream-issue triage workflow, with
+  real-run evidence.
+- **Sentry Agent Tracing: implemented and tested offline.** It needs the owner's DSN for real traces.
+- **DigitalOcean: prepared and validated locally, not deployed.** It needs the owner's sign-in and credits.
+- **Everything else:** not integrated.
 
 ## 8. Deployment
 
