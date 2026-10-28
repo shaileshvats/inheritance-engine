@@ -1,0 +1,78 @@
+# Inheritance Engine on a single DigitalOcean Droplet (or any Linux host with Docker).
+# Every service uses host networking and binds to 127.0.0.1: nothing is exposed publicly.
+# Reach the UI through an SSH tunnel:  ssh -L 7878:127.0.0.1:7878 root@<droplet-ip>
+name: inheritance-engine
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    network_mode: host
+    environment:
+      OLLAMA_HOST: 127.0.0.1:11434
+    volumes:
+      - ollama:/root/.ollama
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      retries: 30
+
+  model:
+    # One-shot: download the open-weight model into the ollama volume.
+    image: ollama/ollama:latest
+    network_mode: host
+    environment:
+      OLLAMA_HOST: 127.0.0.1:11434
+    entrypoint: ["ollama", "pull", "${IE_MODEL:-gemma4:e4b}"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
+
+  engine:
+    build:
+      context: ../..
+      dockerfile: deploy/digitalocean/Dockerfile.engine
+    network_mode: host
+    environment:
+      IE_BIND: 127.0.0.1:7878
+      # Must be the same path on the host: sandbox containers bind-mount workspaces from it.
+      IE_DATA_DIR: /srv/inheritance-engine/data
+      IE_MODEL_PROVIDER: ollama
+      IE_MODEL_ENDPOINT: http://127.0.0.1:11434
+      IE_MODEL: ${IE_MODEL:-gemma4:e4b}
+      IE_MODEL_CONTEXT: "16384"
+      IE_PRIVACY_MODE: local_only
+      IE_MASTRA_URL: http://127.0.0.1:7880
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_ENVIRONMENT: digitalocean
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /srv/inheritance-engine/data:/srv/inheritance-engine/data
+    depends_on:
+      model:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  mastra:
+    build:
+      context: ../..
+      dockerfile: deploy/digitalocean/Dockerfile.mastra
+    network_mode: host
+    environment:
+      IE_ENGINE_URL: http://127.0.0.1:7878
+      IE_MASTRA_HOST: 127.0.0.1
+      IE_MASTRA_PORT: "7880"
+      IE_MODEL_ENDPOINT: http://127.0.0.1:11434/v1
+      IE_MODEL: ${IE_MODEL:-gemma4:e4b}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_ENVIRONMENT: digitalocean
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+    depends_on:
+      model:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  ollama:

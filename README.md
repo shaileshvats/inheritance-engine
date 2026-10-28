@@ -108,6 +108,30 @@ src/
 web/             vanilla ES modules, no build step, no external requests
 ```
 
+## Optional integrations
+
+All three are optional. The core journey runs without them.
+
+**Mastra companion** ([`companion/mastra`](companion/mastra/README.md)). This TypeScript service, built on
+[Mastra](https://mastra.ai), runs the Lead Engineer chat as a Mastra agent with engine tools, plus a
+`triage-upstream-issues` workflow that classifies the original repository's open GitHub issues against what the
+successor changed. Both run on the same local Gemma model. The engine keeps the last word: a triage verdict of
+"addressed" survives only if it cites a repair or commit that exists.
+
+```bash
+cd companion/mastra && npm ci --ignore-scripts && npm run serve
+IE_MASTRA_URL=http://127.0.0.1:7880 cargo run --release
+```
+
+**Sentry agent tracing.** Set `SENTRY_DSN` for the engine and the companion. Each job becomes a trace: the agent
+team's work (`gen_ai.invoke_agent`), every model call (`gen_ai.chat` with role, model, tokens, latency, outcome), and
+every sandbox run (`gen_ai.execute_tool`). Only metadata leaves the machine, and tests check this by injecting source
+code and secret-shaped strings.
+
+**DigitalOcean.** [`deploy/digitalocean`](deploy/digitalocean/README.md) runs the whole stack (engine, companion,
+Ollama with Gemma 4, Docker sandboxes) on one Droplet, reachable only through SSH. The deployment is prepared and
+validated locally; whether it has been deployed is recorded in [`docs/partners`](docs/partners/README.md).
+
 ## Tests
 
 ```bash

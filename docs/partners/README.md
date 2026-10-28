@@ -1,6 +1,6 @@
 # Partner category audit (HF26 Week 4)
 
-Audited on 2026-10-28 against the official category descriptions on the [HF26 Challenge Hub](https://dev.to/challenges/hf26)
+Audited on 2026-10-28 (updated the same day after the Mastra, Sentry and DigitalOcean work) against the official category descriptions on the [HF26 Challenge Hub](https://dev.to/challenges/hf26)
 and the code in this repository. The official rule is: *"Use only partner tech your project actually uses."*
 A category is marked **Implemented** only when the code uses the technology in the product and there is evidence
 to show for it.
@@ -12,9 +12,9 @@ Deadline: 2026-10-31 23:59 PDT. A submission can win only once, and writing qual
 | Category | Status | Feasible before deadline? |
 | --- | --- | --- |
 | Gemma (featured) | **Implemented** | Done |
-| Sentry Agent Tracing | Not implemented, strong fit | **Yes**: about half a day, needs a free Sentry project/DSN |
-| Mastra | Not implemented, strong fit | **Yes**: about 1 day, adds a Node.js service |
-| DigitalOcean (featured) | Not implemented, real fit (cloud worker) | Yes if Hacktoberfest credits are available. Otherwise it costs money and needs your approval |
+| Mastra | **Implemented**: Lead Engineer agent + two workflows, used by the product; real runs recorded | Done |
+| Sentry Agent Tracing | **Implemented, not yet demonstrated**: engine and companion instrumented, tested offline | Needs the owner's free Sentry DSN to capture real traces |
+| DigitalOcean (featured) | **Prepared, not deployed**: compose stack and images built locally | Needs the owner to sign in and confirm credits; nothing billable created |
 | Temporal | Not implemented; SQLite checkpoints do the same job today | Possible but high risk: about 1.5 days, second runtime |
 | Auth0 for AI Agents | Not implemented, real fit (GitHub actions on the user's behalf, with approval) | Risky: 1–2 days plus Auth0 tenant and GitHub connection setup |
 | SerpApi | Not implemented, minor fit | Yes, a few hours. Low product value |
@@ -42,36 +42,52 @@ Deadline: 2026-10-31 23:59 PDT. A submission can win only once, and writing qual
   (`provenance.attribution.models`), and the demo runs in `docs/demo/README.md`.
 - **Remaining:** none. Gemma 4 12B was downloaded but could not be loaded on this 16 GB machine, and is not claimed.
 
-### Sentry Agent Tracing — feasible, recommended
-- **Requirement:** "Show your agent's work: how it's set up, how it performs (latency, tokens, cost)," what you found,
-  how you debugged it, with traces or screenshots in the write-up.
-- **Fit:** strong. Every agent call is already recorded locally with its parent, duration and files. Sentry would add
-  hosted traces of the agent tree (Lead → Historian/Restorer/Reviewer → Tester), with token counts and latency.
-- **Work:** record token usage from the model responses (not stored yet), then export spans by OTLP or the Rust
-  `sentry` crate (0.49.x) using the gen_ai span conventions. It must be opt-in via `SENTRY_DSN`. Send metadata only
-  (role, model, durations, tokens, outcome), never prompts or source code, to respect `local_only`.
-- **Needs from you:** a free Sentry project and its DSN.
-
-### Mastra — feasible, recommended
+### Mastra — Implemented
 - **Requirement:** "Orchestrate an agent over open models, add memory and tools to a chat agent, or build a workflow
   that triages GitHub issues."
-- **Fit:** two genuine uses.
-  1. **Lead Engineer chat as a Mastra agent** over Gemma (OpenAI-compatible endpoint), with tools that call this engine's
-     API: read findings, open a file, run a verification, propose a restore.
-  2. **A workflow that triages the original project's open GitHub issues against the successor**: still relevant,
-     fixed by the restoration, or obsolete. This matches Mastra's own listed example, and it's useful to an inheritor.
-- **Work:** a small TypeScript service (`companion/mastra`), Node.js install, tool contracts, UI wiring. The current
-  Mastra version is `@mastra/core` 1.79.0; APIs must be checked against current docs.
-- **Bonus:** Sentry's agent monitoring has a Mastra integration, so the two reinforce each other.
+- **In the product** (`companion/mastra`, `@mastra/core` 1.79, Gemma 4 E4B via LM Studio):
+  - `leadEngineer`, an agent with five engine tools. The engine's Lead chat goes through it when `IE_MASTRA_URL` is set,
+    and the UI marks those answers "Lead · Mastra · Gemma".
+  - `answer-lead-question`, a workflow that calls the same tools deterministically, then has `leadEngineerGrounded`
+    answer with structured output. It is chosen automatically because LM Studio 0.4.12 cannot render Gemma 4's
+    template with tools (verified with direct requests). A runtime that can do tool calling gets native mode.
+  - `triage-upstream-issues`, a workflow that triages GitHub issues (Mastra's own listed example). It loads the
+    inheritance, fetches the original repository's open issues, classifies them with Gemma, then runs a deterministic
+    citation check. It runs as a durable engine job from the Overview tab.
+- **Evidence:** `docs/demo/evidence/fn-py-upstream-triage-mastra.json` is a real run on kachayev/fn.py: 24 open
+  upstream issues, 8 triaged. #91 "ImportError: cannot import name Iterable from collections" is *addressed*, citing
+  repair `rep_84e85726…` and commit `ed0b4e499d`, both verified by the engine. 7 are still relevant. The same result
+  came from the UI-started job. See also screenshot `05-mastra-upstream-triage.jpg` and the agent trace entries with
+  provider `mastra`. There are 17 vitest tests (citation rule, telemetry scrubbing, request guards, both workflows
+  against a local fixture model, the HTTP server).
+- **Limits:** native tool calling has not been exercised with Gemma 4 on this machine (runtime limitation above).
+  Mastra storage is in memory, since the engine persists results. A 4B model sometimes repeats a heading.
 
-### DigitalOcean — feasible with credits
-- **Requirement:** "Build or deploy your project on DigitalOcean": host an app or agent, or run an open-weight model on
-  a GPU Droplet.
-- **Fit:** the PRD's optional cloud worker. A Droplet can run Docker, so the full engine (including the sandbox) can run
-  there, unlike most PaaS hosts. CPU-only Gemma inference would be slow; a GPU Droplet costs money.
-- **Work:** deployment guide/script, a firewall locking the API to loopback or an SSH tunnel (the API has no accounts),
-  and a recorded demo run.
-- **Needs from you:** Hacktoberfest DigitalOcean credits, or approval to spend. No spending without approval.
+### Sentry Agent Tracing — Implemented, awaiting a DSN for live evidence
+- **Requirement:** "Show your agent's work: how it's set up, how it performs (latency, tokens, cost)," what you found
+  and debugged, with traces or screenshots in the write-up.
+- **In the product:** with `SENTRY_DSN` set, the engine sends one transaction per job (`gen_ai.invoke_agent`), with
+  `gen_ai.chat` spans per model call (role, model, input/output/total tokens, latency, ok/error class) and
+  `gen_ai.execute_tool` spans per sandbox run (install, syntax, tests, behaviour probe). The companion uses
+  `@mastra/sentry` for its agent runs, model generations and tool calls.
+- **Privacy:** purposes and errors are reduced to fixed categories. A scrubbing transport (engine) and
+  `beforeSendTransaction` plus a span processor (companion) keep only allowlisted metadata keys. `cargo test
+  telemetry` injects source code, a file path and an AWS-key-shaped string, then checks the captured envelope contains
+  tokens and model names and none of that content.
+- **Token usage** is now recorded for every model call and shown in the Agent trace (from the OpenAI-compatible
+  `usage` field, or Ollama's eval counts). Cost is $0 per call: the model runs locally.
+- **Remaining:** a real Sentry project. The DSN is the owner's to create. Then run one job and capture the trace screenshot.
+
+### DigitalOcean — Prepared, not deployed
+- **Requirement:** "Build or deploy your project on DigitalOcean": host an app or agent, or run an open-weight model on a GPU Droplet.
+- **Prepared:** `deploy/digitalocean/` contains a compose stack (Ollama + Gemma 4, engine, Mastra companion,
+  sandboxes through the host Docker), Dockerfiles, a cloud-init file (SSH-only firewall), and a guide with sizing,
+  cost warnings and teardown.
+- **Validated locally:** both images build. The companion container starts, serves `/health`, and refuses a non-local
+  model endpoint. The engine container results are recorded below.
+- **Not done:** no Droplet exists. The Hacktoberfest promos page requires the owner's MLH sign-in to check
+  DigitalOcean credits. Creating a Droplet is billable and needs the owner's account and approval. **Not claimed until
+  deployed and demonstrated.**
 
 ### Temporal — possible, not recommended
 - **Requirement:** "Wrap [your agent] in a Temporal workflow so it survives failures," retries flaky tool calls, and

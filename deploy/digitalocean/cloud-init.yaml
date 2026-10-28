@@ -1,0 +1,16 @@
+#cloud-config
+# Provisions an Ubuntu Droplet for Inheritance Engine. Only SSH is open to the internet.
+package_update: true
+packages:
+  - docker.io
+  - docker-compose-v2
+  - git
+  - ufw
+runcmd:
+  - ufw default deny incoming
+  - ufw allow OpenSSH
+  - ufw --force enable
+  - systemctl enable --now docker
+  - mkdir -p /srv/inheritance-engine/data
+  - git clone https://github.com/shaileshvats/inheritance-engine.git /opt/inheritance-engine
+  - cd /opt/inheritance-engine/deploy/digitalocean && docker compose up -d --build

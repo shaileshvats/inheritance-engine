@@ -1,0 +1,8 @@
+# Mastra companion (Lead Engineer agent + upstream-issue triage workflow). Node 24 runs the TypeScript directly.
+FROM node:24-slim
+WORKDIR /app
+COPY companion/mastra/package.json companion/mastra/package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
+COPY companion/mastra/src ./src
+USER node
+CMD ["node", "src/server.ts"]

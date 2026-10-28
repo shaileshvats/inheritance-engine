@@ -1,0 +1,20 @@
+# Inheritance Engine control plane. It runs inherited code only through the host's Docker daemon
+# (socket mounted by docker-compose.yml), never inside this container.
+FROM rust:1-bookworm AS build
+WORKDIR /src
+COPY Cargo.toml Cargo.lock ./
+COPY src ./src
+RUN cargo build --release --locked
+
+FROM docker:28-cli AS dockercli
+
+FROM debian:bookworm-slim
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+COPY --from=dockercli /usr/local/bin/docker /usr/local/bin/docker
+COPY --from=build /src/target/release/inheritance-engine /usr/local/bin/inheritance-engine
+COPY web /app/web
+ENV IE_WEB_DIR=/app/web
+WORKDIR /srv/inheritance-engine
+ENTRYPOINT ["/usr/local/bin/inheritance-engine"]

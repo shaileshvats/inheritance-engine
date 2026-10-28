@@ -1,0 +1,6 @@
+target
+data*
+**/node_modules
+companion/mastra/.mastra
+.git
+docs
