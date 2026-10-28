@@ -228,14 +228,19 @@ pub fn restorer_patch_schema() -> Value {
 }
 
 pub fn reviewer_repair_schema() -> Value {
+    let b = || json!({"type": "boolean"});
     obj(
         json!({
-            "verdict": en(&["approve", "request_changes", "reject"]),
-            "root_cause_addressed": {"type": "boolean"},
+            "problem_is_real": b(),
+            "evidence_supports_diagnosis": b(),
+            "root_cause_addressed": b(),
+            "preserves_original_behaviour": b(),
+            "tests_exercise_change": b(),
             "regression_risk": en(&["low", "medium", "high"]),
-            "concerns": arr(s())
+            "concerns": arr(s()),
+            "verdict": en(&["approve", "request_changes", "reject"])
         }),
-        &["verdict", "root_cause_addressed", "regression_risk", "concerns"],
+        &["problem_is_real", "evidence_supports_diagnosis", "root_cause_addressed", "preserves_original_behaviour", "tests_exercise_change", "regression_risk", "concerns", "verdict"],
     )
 }
 

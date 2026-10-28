@@ -383,6 +383,11 @@ fn decay_rules() -> &'static [DecayRule] {
             mk(r"\.(assertEquals|assertNotEquals|assertAlmostEquals|assertNotAlmostEquals|assert_|failUnless|failIf|failUnlessEqual|failIfEqual|failUnlessRaises|failUnlessAlmostEqual|failIfAlmostEqual|assertRegexpMatches|assertNotRegexpMatches|assertRaisesRegexp|assertDictContainsSubset)\(", "deprecated unittest alias", "Deprecated unittest method aliases were removed", "Python 3.12"),
             mk(r"\.assertItemsEqual\(", "assertItemsEqual", "Python 2 only; use assertCountEqual", "Python 3.0"),
             mk(r"\binspect\.getargspec\(", "inspect.getargspec", "Use inspect.getfullargspec or inspect.signature", "Python 3.11"),
+            mk(r"^\s*from\s+inspect\s+import\s+[^#]*\bgetargspec\b", "inspect.getargspec", "Use inspect.getfullargspec or inspect.signature", "Python 3.11"),
+            mk(r"^\s*from\s+time\s+import\s+[^#]*\bclock\b", "time.clock", "Use time.perf_counter or time.process_time", "Python 3.8"),
+            mk(r"^\s*from\s+fractions\s+import\s+[^#]*\bgcd\b", "fractions.gcd", "Use math.gcd", "Python 3.9"),
+            mk(r"^\s*from\s+cgi\s+import\s+[^#]*\bescape\b", "cgi.escape", "Use html.escape", "Python 3.8"),
+            mk(r"^\s*from\s+base64\s+import\s+[^#]*\b(encodestring|decodestring)\b", "base64.encodestring", "Use encodebytes/decodebytes", "Python 3.9"),
             mk(r"^\s*(import\s+imp\b|from\s+imp\s+import)", "imp module", "Use importlib", "Python 3.12"),
             mk(r"\btime\.clock\(", "time.clock", "Use time.perf_counter or time.process_time", "Python 3.8"),
             mk(r"@asyncio\.coroutine\b", "asyncio.coroutine", "Use async def", "Python 3.11"),
@@ -423,11 +428,12 @@ pub fn scan_decay(files: &[SourceFile]) -> Vec<DecayHit> {
         for (i, line) in text.lines().enumerate() {
             for r in &rules {
                 if let Some(m) = r.re.find(line) {
+                    let guarded = ["version_info", "PY2", "PY3", "six.", "sys.version"].iter().any(|g| line.contains(g));
                     hits.push(DecayHit {
                         path: f.path.clone(),
                         line: i + 1,
                         pattern: r.pattern.to_string(),
-                        detail: r.detail.to_string(),
+                        detail: if guarded { format!("{} (this line appears guarded by a Python version check, so it may be harmless)", r.detail) } else { r.detail.to_string() },
                         removed_in: r.removed_in.to_string(),
                         text: line.trim().chars().take(200).collect(),
                         matched: m.as_str().trim().to_string(),
@@ -805,6 +811,15 @@ mod tests {
         assert!(patterns.contains(&"print statement"));
         assert_eq!(hits.iter().filter(|h| h.pattern == "print statement").count(), 1);
         assert_eq!(hits[0].line, 2);
+    }
+
+    #[test]
+    fn decay_scan_handles_from_imports_and_guards() {
+        let files = vec![sf("f.py", "from inspect import getargspec\nletters = string.letters if version_info[0] == 2 else string.ascii_letters\n")];
+        let hits = scan_decay(&files);
+        assert!(hits.iter().any(|h| h.pattern == "inspect.getargspec" && h.line == 1));
+        let g = hits.iter().find(|h| h.pattern == "string module constant").unwrap();
+        assert!(g.detail.contains("guarded"));
     }
 
     #[test]

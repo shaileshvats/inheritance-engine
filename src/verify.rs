@@ -179,6 +179,44 @@ pub fn regressed(before: Option<&TestSummary>, after: Option<&TestSummary>, befo
     }
 }
 
+/// True when `after` is measurably better than `before`.
+pub fn improved(before: Option<&TestSummary>, after: Option<&TestSummary>, before_status: &str, after_status: &str) -> bool {
+    if after_status == "passed" && before_status != "passed" {
+        return true;
+    }
+    match (before, after) {
+        (Some(b), Some(a)) => a.passed > b.passed || a.failed + a.errors < b.failed + b.errors,
+        _ => false,
+    }
+}
+
+/// The innermost traceback frame (repository-relative path, line) for each failure in the output.
+pub fn innermost_frames(output: &str) -> Vec<(String, usize)> {
+    static R: OnceLock<(Regex, Regex)> = OnceLock::new();
+    let (frame, exc) = R.get_or_init(|| {
+        (
+            Regex::new(r#"^(?:([\w./\-]+\.(?:py|js|ts)):(\d+): in |\s*File "(?:/work/)?([^"]+)", line (\d+))"#).unwrap(),
+            Regex::new(r"^(E\s+\S|[A-Za-z_][\w.]*(Error|Exception|Warning)\b:?)").unwrap(),
+        )
+    });
+    let mut out = Vec::new();
+    let mut last: Option<(String, usize)> = None;
+    for line in output.lines() {
+        if let Some(c) = frame.captures(line) {
+            let p = c.get(1).or(c.get(3)).map(|m| m.as_str()).unwrap_or("").trim_start_matches("./").to_string();
+            let l = c.get(2).or(c.get(4)).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
+            if !p.starts_with('/') {
+                last = Some((p, l));
+            }
+        } else if exc.is_match(line) {
+            if let Some(f) = last.take() {
+                out.push(f);
+            }
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -221,6 +259,21 @@ mod tests {
     fn pytest_command_includes_nonstandard_test_files() {
         assert_eq!(pytest_command(&["tests/test_a.py".into()]), "python -m pytest -q -p no:cacheprovider");
         assert_eq!(pytest_command(&["tests.py".into()]), "python -m pytest -q -p no:cacheprovider 'tests.py'");
+    }
+
+    #[test]
+    fn finds_innermost_frames() {
+        let out = "tests.py:10: in <module>\n    from fn import op\nfn/stream.py:9: in <module>\n    from .iters import map\nfn/iters.py:2: in <module>\n    from collections.abc import deque\nE   ImportError: cannot import name 'deque'\n";
+        assert_eq!(innermost_frames(out), vec![("fn/iters.py".to_string(), 2)]);
+        let py = "Traceback (most recent call last):\n  File \"/work/a.py\", line 3, in <module>\n  File \"/usr/lib/x.py\", line 9, in f\nValueError: boom\n";
+        assert_eq!(innermost_frames(py), vec![("a.py".to_string(), 3)]);
+    }
+
+    #[test]
+    fn improvement_detection() {
+        let b = TestSummary { passed: 0, failed: 0, errors: 1, skipped: 0 };
+        assert!(!improved(Some(&b), Some(&b), "failed", "failed"));
+        assert!(improved(Some(&b), Some(&TestSummary { passed: 120, failed: 6, errors: 0, skipped: 0 }), "failed", "failed"));
     }
 
     #[test]

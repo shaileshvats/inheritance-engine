@@ -242,6 +242,10 @@ fn claims_from(app: &App, id: &str, v: &Value, prefix: &str, agent: &str, max: u
         .unwrap_or_default()
 }
 
+fn norm_text(s: &str) -> String {
+    s.to_lowercase().split_whitespace().collect::<Vec<_>>().join(" ").trim_end_matches('.').to_string()
+}
+
 struct DecayGroup {
     gid: String,
     pattern: String,
@@ -483,9 +487,12 @@ pub async fn investigate(ctx: &mut JobCtx) -> anyhow::Result<()> {
             let spec = CallSpec { agent: "historian", purpose: "Reconstruct purpose and architecture".into(), inheritance_id: Some(&id), parent_id: plan_call.clone(), input_files: pack.files.clone(), task, schema: agents::historian_schema(), max_tokens: 2500 };
             let (v, call_id) = app.agents.call_json(spec, &n).await?;
             let purpose = claim_from(&app, &id, &v["purpose"], "c_purpose".into(), "historian");
-            let caps = claims_from(&app, &id, &v["capabilities"], "c_cap_", "historian", 8);
-            let flows = claims_from(&app, &id, &v["data_flows"], "c_flow_", "historian", 6);
-            let ext = claims_from(&app, &id, &v["external_services"], "c_ext_", "historian", 6);
+            // Small models sometimes repeat a claim; keep each distinct statement once.
+            let mut seen: BTreeSet<String> = BTreeSet::from([norm_text(&purpose.text)]);
+            let mut dedupe = |claims: Vec<Claim>| -> Vec<Claim> { claims.into_iter().filter(|c| seen.insert(norm_text(&c.text))).collect() };
+            let caps = dedupe(claims_from(&app, &id, &v["capabilities"], "c_cap_", "historian", 8));
+            let flows = dedupe(claims_from(&app, &id, &v["data_flows"], "c_flow_", "historian", 6));
+            let ext = dedupe(claims_from(&app, &id, &v["external_services"], "c_ext_", "historian", 6));
             let root = layout.successor();
             let comps: Vec<Component> = v["components"]
                 .as_array()
@@ -858,6 +865,36 @@ pub async fn restore(ctx: &mut JobCtx) -> anyhow::Result<()> {
         ctx.finish(&step, if status == "applied" { "done" } else { "failed" }, detail);
     }
 
+    // Fixing one problem often uncovers the next (e.g. an import error hides later failures).
+    // While verification still fails, let the Restorer diagnose the new output and repair again.
+    if mode != "selected" && exec_mode(&row) != ExecMode::None {
+        for round in 1..=2 {
+            let Some(cur) = current.clone() else { break };
+            if !matches!(cur.status.as_str(), "failed" | "error") || cur.output_tail.is_empty() {
+                break;
+            }
+            let step = format!("restorer: re-diagnose (round {round})");
+            ctx.begin(&step).await?;
+            let new_issues = rediagnose(&app, &id, &inv, &cur).await?;
+            let wanted: Vec<Issue> = new_issues.into_iter().filter(|i| mode == "fix_all" || i.category == "essential").collect();
+            if wanted.is_empty() {
+                ctx.finish(&step, "done", "no new essential problem identified from the failing output");
+                break;
+            }
+            ctx.finish(&step, "done", format!("{} new issue(s) found in the failing output", wanted.len()));
+            for issue in wanted {
+                let rstep = format!("repair: {}", truncate(&issue.title, 60).replace('\n', " "));
+                ctx.begin(&rstep).await?;
+                gitops::revert_worktree(&successor)?;
+                let (status, detail, after) = repair_issue(&app, &id, &inv, issue, current.clone(), ctx).await?;
+                if let Some(a) = after {
+                    current = Some(a);
+                }
+                ctx.finish(&rstep, if status == "applied" { "done" } else { "failed" }, detail);
+            }
+        }
+    }
+
     ctx.begin("final verification").await?;
     let final_v = if exec_mode(&row) != ExecMode::None { Some(run_suite(&app, &id, "after restoration", None).await?) } else { None };
     let passed = final_v.as_ref().map(|v| v.status == "passed").unwrap_or(false);
@@ -958,7 +995,7 @@ async fn repair_issue(app: &App, id: &str, inv: &Inventory, mut issue: Issue, be
         // Independent review of the actual diff.
         let rn = agents::nonce();
         let rtask = format!(
-            "Review this repair independently. Is the problem real? Does the evidence support the diagnosis? Does the diff fix the root cause? Could it change behaviour or introduce regressions? Do the existing tests actually exercise it?\n\nIssue {}: {}\nDiagnosis: {}\nRestorer's rationale: {}\nVerification before the change: {}\n\n{}{}",
+            "Review this repair independently and answer each check honestly from the diff and evidence. Approve only if the problem is real, the diff fixes its root cause, and original behaviour is preserved. Check that every name the diff imports or calls really exists where the diff says it does. In 'concerns', write specific problems you found in THIS diff (empty list if none); do not restate the checks.\n\nIssue {}: {}\nDiagnosis: {}\nRestorer's rationale: {}\nVerification before the change: {}\n\n{}{}",
             issue.id,
             issue.title,
             redact(&issue.diagnosis),
@@ -976,13 +1013,27 @@ async fn repair_issue(app: &App, id: &str, inv: &Inventory, mut issue: Issue, be
                 break;
             }
         };
-        let review = Review {
+        let concerns: Vec<String> = serde_json::from_value::<Vec<String>>(rv["concerns"].clone())
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|c| !c.trim().is_empty() && !c.trim_end().ends_with('?'))
+            .collect();
+        let mut review = Review {
             verdict: rv["verdict"].as_str().unwrap_or("reject").into(),
+            problem_is_real: rv["problem_is_real"].as_bool(),
+            evidence_supports_diagnosis: rv["evidence_supports_diagnosis"].as_bool(),
+            preserves_original_behaviour: rv["preserves_original_behaviour"].as_bool(),
+            tests_exercise_change: rv["tests_exercise_change"].as_bool(),
             root_cause_addressed: rv["root_cause_addressed"].as_bool().unwrap_or(false),
             regression_risk: rv["regression_risk"].as_str().unwrap_or("high").into(),
-            concerns: serde_json::from_value(rv["concerns"].clone()).unwrap_or_default(),
+            concerns,
             call_id: Some(review_call),
         };
+        // An approval that contradicts the reviewer's own checks is not an approval.
+        if review.verdict == "approve" && (review.problem_is_real == Some(false) || !review.root_cause_addressed || review.preserves_original_behaviour == Some(false)) {
+            review.verdict = "request_changes".into();
+            review.concerns.push("Engine: verdict was 'approve' but the reviewer's own checks failed (problem real / root cause / behaviour preserved).".into());
+        }
         repair.review = Some(review.clone());
         if review.verdict != "approve" {
             gitops::revert_worktree(&successor)?;
@@ -1005,20 +1056,48 @@ async fn repair_issue(app: &App, id: &str, inv: &Inventory, mut issue: Issue, be
 
         // Verify the change for real before keeping it.
         let after = if exec_mode(&row) != ExecMode::None { Some(run_suite(app, id, &format!("after {}", truncate(&issue.title, 40)), None).await?) } else { None };
+        let mut progress_note: Option<String> = None;
         if let Some(a) = &after {
             repair.verification_after = Some(a.id.clone());
             let b_sum = before.as_ref().and_then(|b| b.summary.clone());
             let b_status = before.as_ref().map(|b| b.status.clone()).unwrap_or_default();
-            if verify::regressed(b_sum.as_ref(), a.summary.as_ref(), &b_status, &a.status) {
+            let regressed = verify::regressed(b_sum.as_ref(), a.summary.as_ref(), &b_status, &a.status);
+            let improved = verify::improved(b_sum.as_ref(), a.summary.as_ref(), &b_status, &a.status);
+            let changed = changed_lines(&diff);
+            let culprit = verify::innermost_frames(&a.output_tail).into_iter().find(|(p, l)| changed.iter().any(|(cp, lo, hi)| cp == p && *l + 2 >= *lo && *l <= hi + 2));
+            let verdict = if regressed {
+                Some(format!("verification got worse ({b_status} → {})", a.status))
+            } else if !improved && a.status != "passed" {
+                culprit.as_ref().map(|(p, l)| format!("the failure now originates in the edited code ({p}:{l})"))
+            } else {
+                None
+            };
+            if let Some(why) = verdict {
                 gitops::revert_worktree(&successor)?;
                 repair.status = "reverted".into();
-                repair.note = Some(format!("Verification got worse ({} → {}); change reverted", b_status, a.status));
+                repair.note = Some(format!("Engine check: {why}; change reverted."));
                 app.db.put(Kind::Repair, &repair.id, Some(id), &repair.created_at, &repair)?;
+                if attempt == 0 {
+                    feedback = format!(
+                        "\nYour previous attempt was applied, tested, and reverted because {why}. Output after that attempt:\n{}\nPropose a corrected repair.",
+                        agents::untrusted(&n, "verification output after previous attempt", &tail_lines(&a.output_tail, 30))
+                    );
+                    repair.id = new_id("rep");
+                    repair.created_at = now();
+                    repair.verification_after = None;
+                    continue;
+                }
                 issue.status = "failed".into();
                 save_issue(app, id, &issue)?;
-                // Re-measure the restored state so the next repair compares against reality.
-                let restored = if exec_mode(&row) != ExecMode::None { Some(run_suite(app, id, "after revert", None).await?) } else { None };
-                return Ok(("reverted".into(), "verification regressed; reverted".into(), restored));
+                return Ok(("reverted".into(), format!("{why}; reverted"), before.clone()));
+            }
+            if !improved && b_status != "passed" {
+                let was = verify::innermost_frames(&before_out).last().map(|(p, l)| format!("{p}:{l}"));
+                let now_at = verify::innermost_frames(&a.output_tail).last().map(|(p, l)| format!("{p}:{l}"));
+                progress_note = Some(match (was, now_at) {
+                    (Some(w), Some(n2)) if w != n2 => format!("Test counts unchanged, but the failure moved from {w} to {n2} (outside the edited lines)."),
+                    _ => "No measurable change in verification; kept because the reviewer approved and nothing regressed.".into(),
+                });
             }
         }
         let summary_line = |v: Option<&Verification>| v.map(|v| match &v.summary {
@@ -1040,7 +1119,7 @@ async fn repair_issue(app: &App, id: &str, inv: &Inventory, mut issue: Issue, be
         let sha = gitops::commit_all(&successor, &message)?;
         repair.commit = Some(sha.clone());
         repair.status = "applied".into();
-        repair.note = if after.is_none() { Some("Committed without verification because execution is disabled; treat as unverified.".into()) } else { None };
+        repair.note = if after.is_none() { Some("Committed without verification because execution is disabled; treat as unverified.".into()) } else { progress_note };
         app.db.put(Kind::Repair, &repair.id, Some(id), &repair.created_at, &repair)?;
         issue.status = "repaired".into();
         save_issue(app, id, &issue)?;
@@ -1052,6 +1131,92 @@ async fn repair_issue(app: &App, id: &str, inv: &Inventory, mut issue: Issue, be
     issue.status = "failed".into();
     save_issue(app, id, &issue)?;
     Ok(("failed".into(), repair.note.clone().unwrap_or_else(|| "repair failed".into()), None))
+}
+
+/// (path, first_line, last_line) of the new-side hunks in a unified diff.
+fn changed_lines(diff: &str) -> Vec<(String, usize, usize)> {
+    let hunk = regex::Regex::new(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@").unwrap();
+    let mut out = Vec::new();
+    let mut file = String::new();
+    for line in diff.lines() {
+        if let Some(p) = line.strip_prefix("+++ b/") {
+            file = p.to_string();
+        } else if let Some(c) = hunk.captures(line) {
+            let start: usize = c[1].parse().unwrap_or(1);
+            let len: usize = c.get(2).and_then(|m| m.as_str().parse().ok()).unwrap_or(1);
+            out.push((file.clone(), start, start + len.max(1) - 1));
+        }
+    }
+    out
+}
+
+/// Diagnose a still-failing verification after earlier repairs. Creates and returns new open issues.
+async fn rediagnose(app: &App, id: &str, inv: &Inventory, failing: &Verification) -> anyhow::Result<Vec<Issue>> {
+    let n = agents::nonce();
+    let mut focus: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+    for (p, l) in paths_in_output(app, id, &failing.output_tail) {
+        focus.entry(p).or_default().push(l);
+    }
+    let repaired: BTreeSet<String> = issues_of(app, id).into_iter().filter(|i| i.status == "repaired").filter_map(|i| i.pattern).collect();
+    let groups: Vec<DecayGroup> = decay_groups(inv).into_iter().filter(|g| !repaired.contains(&g.pattern)).collect();
+    for g in groups.iter().filter(|g| group_linked_to_failure(g, &failing.output_tail)) {
+        for h in &g.hits {
+            focus.entry(h.path.clone()).or_default().push(h.line);
+        }
+    }
+    let files: Vec<(String, Vec<usize>)> = focus.into_iter().take(4).collect();
+    let pack = pack_files(app, id, &n, &files, app.cfg.prompt_budget_chars / 2);
+    let groups_text: Vec<String> = groups
+        .iter()
+        .map(|g| format!("- {} \"{}\": {} hits, e.g. {}:{} — {} (removed in {}). Mentioned in the failing output: {}.", g.gid, g.pattern, g.hits.len(), g.hits[0].path, g.hits[0].line, g.detail, g.removed_in, if group_linked_to_failure(g, &failing.output_tail) { "yes" } else { "no" }))
+        .collect();
+    let recent: Vec<String> = app.db.list::<Repair>(Kind::Repair, Some(id))?.iter().filter(|r| r.status == "applied").map(|r| format!("- {} changed {}", r.commit.as_deref().map(|c| &c[..10]).unwrap_or("?"), r.files.join(", "))).collect();
+    let task = format!(
+        "Earlier repairs were applied and kept:\n{}\n\nVerification still does not pass: {}\n\nRemaining static decay groups:\n{}\n\n{}{}\nDiagnose the problem(s) the failing output shows NOW. Only report issues the output or cited code demonstrates; mark them essential when they stop the tests from running or passing. Reference decay group ids when relevant.",
+        if recent.is_empty() { "- none".into() } else { recent.join("\n") },
+        verification_brief(failing),
+        if groups_text.is_empty() { "- none".into() } else { groups_text.join("\n") },
+        agents::untrusted(&n, "verification output (tail)", &tail_lines(&failing.output_tail, 80)),
+        pack.text,
+    );
+    let spec = CallSpec { agent: "restorer", purpose: "Re-diagnose remaining failure".into(), inheritance_id: Some(id), parent_id: None, input_files: pack.files.clone(), task, schema: agents::restorer_diagnose_schema(), max_tokens: 1800 };
+    let (v, call_id) = app.agents.call_json(spec, &n).await?;
+    let root = app.layout(id).successor();
+    let mut out = Vec::new();
+    for (i, it) in v["issues"].as_array().cloned().unwrap_or_default().iter().take(4).enumerate() {
+        let gids: Vec<String> = it["decay_groups"].as_array().map(|a| a.iter().filter_map(|g| g.as_str().map(|s| s.trim().to_string())).collect()).unwrap_or_default();
+        let matched: Vec<&DecayGroup> = groups.iter().filter(|g| gids.contains(&g.gid)).collect();
+        let mut ev = parse_evidence(&it["evidence"]);
+        for g in &matched {
+            for h in g.hits.iter().take(2) {
+                ev.push(Evidence { path: h.path.clone(), start_line: h.line, end_line: h.line, quote: h.text.clone(), check: "unchecked".into() });
+            }
+        }
+        evidence::check_all(&root, &mut ev);
+        // Superseded open issues for the same decay pattern are folded into this one.
+        if let Some(g) = matched.first() {
+            for mut old in issues_of(app, id).into_iter().filter(|o| o.status == "open" && o.pattern.as_deref() == Some(g.pattern.as_str())) {
+                old.status = "skipped".into();
+                save_issue(app, id, &old)?;
+            }
+        }
+        let issue = Issue {
+            id: format!("iss_{}_{}", &call_id[5..13], i + 1),
+            title: it["title"].as_str().unwrap_or("Untitled issue").chars().take(120).collect(),
+            category: it["category"].as_str().unwrap_or("essential").into(),
+            severity: it["severity"].as_str().unwrap_or("high").into(),
+            diagnosis: it["diagnosis"].as_str().unwrap_or("").into(),
+            evidence: ev,
+            proposed_fix: it["proposed_fix"].as_str().unwrap_or("").into(),
+            confidence: it["confidence"].as_str().unwrap_or("low").into(),
+            source: "verification".into(),
+            status: "open".into(),
+            pattern: matched.first().map(|g| g.pattern.clone()),
+        };
+        save_issue(app, id, &issue)?;
+        out.push(issue);
+    }
+    Ok(out)
 }
 
 /// Write INHERITANCE.md into the successor: attribution, provenance and lineage. Deterministic.
@@ -1148,6 +1313,12 @@ mod tests {
         assert!(apply_edits(d.path(), &e).err().unwrap()[0].contains("not an existing file"));
         let e = vec![json!({"path": ".git/config", "find": "a", "replace": "b", "all_occurrences": false})];
         assert!(apply_edits(d.path(), &e).is_err());
+    }
+
+    #[test]
+    fn changed_lines_from_diff() {
+        let d = "diff --git a/fn/iters.py b/fn/iters.py\n--- a/fn/iters.py\n+++ b/fn/iters.py\n@@ -1,3 +1,4 @@\n-x\n+y\n";
+        assert_eq!(changed_lines(d), vec![("fn/iters.py".to_string(), 1, 4)]);
     }
 
     #[test]

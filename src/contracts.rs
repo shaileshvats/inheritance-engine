@@ -334,6 +334,14 @@ pub struct Issue {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Review {
     pub verdict: String,
+    #[serde(default)]
+    pub problem_is_real: Option<bool>,
+    #[serde(default)]
+    pub evidence_supports_diagnosis: Option<bool>,
+    #[serde(default)]
+    pub preserves_original_behaviour: Option<bool>,
+    #[serde(default)]
+    pub tests_exercise_change: Option<bool>,
     pub root_cause_addressed: bool,
     pub regression_risk: String,
     pub concerns: Vec<String>,
