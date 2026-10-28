@@ -21,6 +21,8 @@ pub struct RunRequest<'a> {
     /// Run as root inside the container (needed to write the dependency volume). Never applies natively.
     pub as_root: bool,
     pub timeout: Duration,
+    /// Mount this directory at /work instead of the successor (Docker only; used for the original export).
+    pub workdir: Option<std::path::PathBuf>,
 }
 
 #[derive(Debug, Clone)]
@@ -78,7 +80,7 @@ pub async fn run(req: RunRequest<'_>) -> anyhow::Result<RunOutcome> {
 }
 
 fn docker_args(req: &RunRequest<'_>, name: &str) -> anyhow::Result<(Vec<String>, String)> {
-    let successor = req.layout.successor().canonicalize()?;
+    let successor = req.workdir.clone().unwrap_or_else(|| req.layout.successor()).canonicalize()?;
     let command = render(req.command, "/work", "/deps");
     let mut args: Vec<String> = vec![
         "run".into(), "--rm".into(), "--name".into(), name.into(),
@@ -137,6 +139,9 @@ async fn run_docker(req: RunRequest<'_>) -> anyhow::Result<RunOutcome> {
 }
 
 async fn run_native(req: RunRequest<'_>) -> anyhow::Result<RunOutcome> {
+    if req.workdir.is_some() {
+        anyhow::bail!("alternate working directories are only supported in Docker mode");
+    }
     let successor = req.layout.successor().canonicalize()?;
     let deps = req.layout.native_deps();
     let home = req.layout.native_home();
@@ -202,7 +207,7 @@ mod tests {
         let env = vec![("PYTHONPATH".to_string(), "{WORK}:{DEPS}".to_string())];
         let req = RunRequest {
             mode: ExecMode::Docker, layout: &layout, inheritance_id: "inh_1", image: "python:3.12-slim",
-            command: "python -m pytest -q", env: &env, network: false, as_root: false, timeout: Duration::from_secs(5),
+            command: "python -m pytest -q", env: &env, network: false, as_root: false, timeout: Duration::from_secs(5), workdir: None,
         };
         let (args, _) = docker_args(&req, "n").unwrap();
         let joined = args.join(" ");
@@ -221,7 +226,7 @@ mod tests {
         std::fs::create_dir_all(layout.successor()).unwrap();
         let req = RunRequest {
             mode: ExecMode::Native, layout: &layout, inheritance_id: "inh_1", image: "",
-            command: "env; pwd", env: &[], network: false, as_root: false, timeout: Duration::from_secs(10),
+            command: "env; pwd", env: &[], network: false, as_root: false, timeout: Duration::from_secs(10), workdir: None,
         };
         let out = run(req).await.unwrap();
         assert_eq!(out.exit_code, Some(0));
@@ -236,7 +241,7 @@ mod tests {
         std::fs::create_dir_all(layout.successor()).unwrap();
         let req = RunRequest {
             mode: ExecMode::Native, layout: &layout, inheritance_id: "inh_1", image: "",
-            command: "sleep 30", env: &[], network: false, as_root: false, timeout: Duration::from_millis(300),
+            command: "sleep 30", env: &[], network: false, as_root: false, timeout: Duration::from_millis(300), workdir: None,
         };
         let out = run(req).await.unwrap();
         assert!(out.timed_out);

@@ -348,6 +348,27 @@ pub struct Review {
     pub call_id: Option<String>,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct ProbeResult {
+    pub name: String,
+    pub code: String,
+    pub original_output: String,
+    pub successor_output: String,
+    /// preserved | changed | inconclusive
+    pub verdict: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ProbeReport {
+    pub tester_call_id: Option<String>,
+    pub legacy_image: String,
+    pub modern_image: String,
+    pub probes: Vec<ProbeResult>,
+    /// preserved | changed | inconclusive
+    pub verdict: String,
+    pub note: Option<String>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Repair {
     pub id: String,
@@ -364,6 +385,8 @@ pub struct Repair {
     pub created_at: String,
     #[serde(default)]
     pub attempt: u32,
+    #[serde(default)]
+    pub probe: Option<ProbeReport>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq, Eq)]

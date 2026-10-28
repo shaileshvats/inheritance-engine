@@ -118,6 +118,26 @@ export class RestorationTab {
     return h('ol', { class: 'timeline' }, repairs.map((r, idx) => this.repairItem(r, issues.get(r.issue_id), vers, idx === 0)));
   }
 
+  probeBlock(r) {
+    const p = r.probe;
+    const label = { preserved: 'Behaviour preserved', changed: 'Behaviour changed', inconclusive: 'Inconclusive' }[p.verdict] || titleCase(p.verdict);
+    const pillState = { preserved: 'passed', changed: 'failed', inconclusive: 'not_run' }[p.verdict] || p.verdict;
+    return h('div', { class: ['review', `probe-${p.verdict}`] },
+      h('div', { class: 'review-head' },
+        h('h6', null, 'Behaviour probe'),
+        pill(pillState, label),
+        p.legacy_image ? h('span', { class: 'small' }, `original on ${p.legacy_image} vs successor on ${p.modern_image}`) : null,
+        p.tester_call_id ? h('button', { class: 'link small', type: 'button', onclick: () => this.ctx.goTab('agents', { call: p.tester_call_id }) }, 'trace') : null),
+      p.note ? h('p', { class: 'small muted' }, p.note) : null,
+      (p.probes || []).length ? h('table', { class: 'table small' },
+        h('thead', null, h('tr', null, h('th', { scope: 'col' }, 'Probe'), h('th', { scope: 'col' }, 'Original'), h('th', { scope: 'col' }, 'Successor'), h('th', { scope: 'col' }, 'Result'))),
+        h('tbody', null, p.probes.map((x) => h('tr', null,
+          h('td', null, h('details', null, h('summary', null, x.name), h('pre', { class: 'mono' }, x.code))),
+          h('td', { class: 'mono' }, x.original_output || '—'),
+          h('td', { class: 'mono' }, x.successor_output || '—'),
+          h('td', null, pill({ preserved: 'passed', changed: 'failed' }[x.verdict] || 'not_run', titleCase(x.verdict))))))) : null);
+  }
+
   repairItem(r, issue, vers, latest) {
     const rev = r.review;
     const verLink = (id, label) => {
@@ -145,6 +165,7 @@ export class RestorationTab {
           (rev.concerns || []).length ? h('ul', { class: 'small' }, rev.concerns.map((c) => h('li', null, c))) : h('p', { class: 'small muted' }, 'No concerns raised.'))
           : h('p', { class: 'small muted' }, 'Not reviewed.'),
         h('div', { class: 'repair-verify small' }, verLink(r.verification_before, 'Before'), h('span', { 'aria-hidden': 'true' }, ' → '), verLink(r.verification_after, 'After')),
+        r.probe ? this.probeBlock(r) : null,
         (r.files || []).length ? h('p', { class: 'small' }, 'Files: ', r.files.map((f, k) => [k ? ', ' : '',
           h('button', { class: 'link mono', type: 'button', onclick: () => this.ctx.openFile(f) }, f)])) : null,
         details(`diff-${r.id}`, this.ctx.openSet, 'Diff', diffView(r.diff), { openByDefault: latest })));

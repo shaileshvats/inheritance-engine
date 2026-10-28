@@ -112,7 +112,7 @@ pub async fn run_suite(app: &App, id: &str, label: &str, custom_test: Option<&st
         let layout = layout.clone();
         let rev = rev.clone();
         async move {
-            let out = sandbox::run(RunRequest { mode, layout: &layout, inheritance_id: id, image: &plan.image, command: &command, env: &plan.env, network, as_root, timeout }).await?;
+            let out = sandbox::run(RunRequest { mode, layout: &layout, inheritance_id: id, image: &plan.image, command: &command, env: &plan.env, network, as_root, timeout, workdir: None }).await?;
             let output = redact(&out.output);
             let is_test = label.ends_with("tests");
             let summary = if is_test { verify::parse_summary(&output) } else { None };
@@ -910,6 +910,15 @@ pub async fn restore(ctx: &mut JobCtx) -> anyhow::Result<()> {
         }
     }
 
+    // Issues resolved as a side effect of other repairs are closed by a static re-scan, not left open.
+    for mut i in issues_of(&app, &id).into_iter().filter(|i| matches!(i.status.as_str(), "open" | "failed")) {
+        if let Some(by) = resolved_by_rescan(&app, &id, &inv, &i) {
+            i.status = "repaired".into();
+            i.diagnosis.push_str(&format!("\n\nResolved by an earlier repair: {by}"));
+            save_issue(&app, &id, &i)?;
+        }
+    }
+
     ctx.begin("final verification").await?;
     let final_v = if exec_mode(&row) != ExecMode::None { Some(run_suite(&app, &id, "after restoration", None).await?) } else { None };
     let passed = final_v.as_ref().map(|v| v.status == "passed").unwrap_or(false);
@@ -957,6 +966,7 @@ async fn repair_issue(app: &App, id: &str, inv: &Inventory, mut issue: Issue, be
         note: None,
         created_at: now(),
         attempt: 0,
+        probe: None,
     };
     let mut feedback = String::new();
     let mut parent: Option<String> = None;
@@ -1134,12 +1144,46 @@ async fn repair_issue(app: &App, id: &str, inv: &Inventory, mut issue: Issue, be
                 });
             }
         }
+        // Tests only prove what they exercise: compare behaviour against the original in its own era.
+        if after.as_ref().map(|a| a.status == "passed" || verify::improved(before.as_ref().and_then(|b| b.summary.as_ref()), a.summary.as_ref(), before.as_ref().map(|b| b.status.as_str()).unwrap_or(""), &a.status)).unwrap_or(false) {
+            match crate::probe::run(app, id, &issue, &diff, &repair.files, repair.review.as_ref().and_then(|r| r.call_id.clone())).await {
+                Ok(Some(report)) => {
+                    let changed = report.verdict == "changed";
+                    repair.probe = Some(report.clone());
+                    if changed {
+                        gitops::revert_worktree(&successor)?;
+                        repair.status = "reverted".into();
+                        repair.note = Some(format!("Behaviour probe: the successor ({}) no longer behaves like the original ({}) on code the tests do not cover; change reverted.", report.modern_image, report.legacy_image));
+                        app.db.put(Kind::Repair, &repair.id, Some(id), &repair.created_at, &repair)?;
+                        if attempt == 0 {
+                            feedback = format!(
+                                "\nYour previous attempt passed the tests but was reverted: behaviour probes show it changes what the original code does.\n{}\nPropose a repair that keeps the original behaviour on the modern runtime.",
+                                agents::untrusted(&n, "behaviour probe results", &crate::probe::feedback(&report))
+                            );
+                            repair.id = new_id("rep");
+                            repair.created_at = now();
+                            repair.verification_after = None;
+                            repair.probe = None;
+                            continue;
+                        }
+                        issue.status = "failed".into();
+                        save_issue(app, id, &issue)?;
+                        let restored = if exec_mode(&row) != ExecMode::None { Some(run_suite(app, id, "after revert", None).await?) } else { None };
+                        return Ok(("reverted".into(), "behaviour probe showed changed behaviour; reverted".into(), restored));
+                    }
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    repair.probe = Some(ProbeReport { tester_call_id: None, legacy_image: String::new(), modern_image: String::new(), probes: vec![], verdict: "inconclusive".into(), note: Some(format!("probe could not run: {e:#}")) });
+                }
+            }
+        }
         let summary_line = |v: Option<&Verification>| v.map(|v| match &v.summary {
             Some(s) => format!("{} ({} passed, {} failed, {} errors)", v.status, s.passed, s.failed, s.errors),
             None => v.status.clone(),
         }).unwrap_or_else(|| "not run".into());
         let message = format!(
-            "Restore: {}\n\n{}\n\nIssue: {}\nReviewed-by: Reviewer agent ({}) - verdict approve, regression risk {}\nVerification: {} -> {}\nInheritance-Engine-Repair: {}\nOriginal-Commit: {}",
+            "Restore: {}\n\n{}\n\nIssue: {}\nReviewed-by: Reviewer agent ({}) - verdict approve, regression risk {}\nVerification: {} -> {}{}\nInheritance-Engine-Repair: {}\nOriginal-Commit: {}",
             truncate(&issue.title, 72),
             truncate(&repair.rationale, 600),
             issue.id,
@@ -1147,6 +1191,7 @@ async fn repair_issue(app: &App, id: &str, inv: &Inventory, mut issue: Issue, be
             review.regression_risk,
             summary_line(before.as_ref()),
             summary_line(after.as_ref()),
+            repair.probe.as_ref().map(|p| format!("\nBehaviour-Probe: {} ({} vs original on {})", p.verdict, p.modern_image, p.legacy_image)).unwrap_or_default(),
             repair.id,
             row.original_commit.as_deref().unwrap_or("?"),
         );
@@ -1157,7 +1202,8 @@ async fn repair_issue(app: &App, id: &str, inv: &Inventory, mut issue: Issue, be
         app.db.put(Kind::Repair, &repair.id, Some(id), &repair.created_at, &repair)?;
         issue.status = "repaired".into();
         save_issue(app, id, &issue)?;
-        let detail = format!("committed {} — {}", &sha[..10], summary_line(after.as_ref()));
+        let probe_note = repair.probe.as_ref().map(|p| format!("; behaviour probe {} vs {}: {}", p.modern_image, p.legacy_image, p.verdict)).unwrap_or_default();
+        let detail = format!("committed {} — {}{probe_note}", &sha[..10], summary_line(after.as_ref()));
         return Ok(("applied".into(), detail, after));
     }
     gitops::revert_worktree(&successor)?;
