@@ -111,7 +111,7 @@ export class DetailView {
     replace(this.errorEl);
     this.detail = d;
     this.ctx.detail = d;
-    this.header.update(d, sig([d.name, d.full_name, d.source_url, d.license, d.stage, d.execution_mode, d.original, d.successor, d.last_verification]));
+    this.header.update(d, sig([d.name, d.full_name, d.source_url, d.license, d.stage, d.execution_mode, d.original, d.successor, d.last_verification, d.replay]));
     this.jobSection.update(d, sig([d.active_job, (d.jobs || []).slice(0, 5)]));
     this.announceJob(d.active_job);
     if (this.tab) this.tab.update(d);
@@ -166,6 +166,9 @@ export class DetailView {
         this.successorBlock(d, succ),
         this.modeBlock(d)),
       lifecycle(d.stage),
+      d.replay ? h('p', { class: 'callout callout-info small replay-banner' },
+        h('strong', null, 'Replay. '),
+        `The patch, the Reviewer's verdict and the probe code below are recorded output from ${d.replay.recorded_model} (${fmtDate(d.replay.recorded_at, true)}). The clone, inventory, tests, behaviour probes, decision and Inheritance Record are produced live by this run. Recorded output is never committed.`) : null,
     ];
   }
 

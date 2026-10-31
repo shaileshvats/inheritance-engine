@@ -44,6 +44,8 @@ export const api = {
   renameSuccessor: (id, name) => request('PATCH', `/api/inheritances/${enc(id)}/successor`, { name }),
 
   research: (id) => request('POST', `/api/inheritances/${enc(id)}/research`, {}),
+  replays: () => request('GET', '/api/replays'),
+  startReplay: (fixture) => request('POST', '/api/replays', { fixture }),
   triage: (id, maxIssues) => request('POST', `/api/inheritances/${enc(id)}/triage`, maxIssues ? { max_issues: maxIssues } : {}),
   reopenIssue: (id, issueId, note) => request('POST', `/api/inheritances/${enc(id)}/issues/${enc(issueId)}/reopen`, { note }),
 

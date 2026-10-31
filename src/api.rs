@@ -92,6 +92,7 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/inheritances/{id}/issues/{issue_id}/reopen", post(reopen_issue))
         .route("/inheritances/{id}/triage", post(triage))
         .route("/inheritances/{id}/research", post(research))
+        .route("/replays", get(list_replays).post(start_replay))
         .route("/calls/{id}", get(get_call))
         .route("/jobs/{id}/{action}", post(job_action))
         .fallback(|| async { ApiError(StatusCode::NOT_FOUND, "no such API route".into()) });
@@ -268,7 +269,43 @@ async fn detail(State(app): State<Arc<App>>, Path(id): Path<String>) -> R<Value>
     o.insert("verify_plan".into(), json!(app.db.get_artifact::<Value>(&id, "verify_plan")?));
     o.insert("upstream_triage".into(), json!(app.db.get_artifact::<Value>(&id, "upstream_triage")?));
     o.insert("web_research".into(), json!(app.db.get_artifact::<Value>(&id, "web_research")?));
+    o.insert("replay".into(), json!(app.db.get_artifact::<Value>(&id, "replay")?));
     Ok(Json(v))
+}
+
+async fn list_replays() -> R<Value> {
+    Ok(Json(json!({"replays": crate::replay::fixtures()})))
+}
+
+#[derive(Deserialize)]
+struct ReplayBody {
+    fixture: Option<String>,
+}
+
+/// Start a replay: a new Docker-mode inheritance whose recorded model output goes through live checks.
+async fn start_replay(State(app): State<Arc<App>>, Json(b): Json<ReplayBody>) -> R<Value> {
+    let fx = crate::replay::fixture(b.fixture.as_deref().unwrap_or("fn-py-prflags")).map_err(|e| bad(e.to_string()))?;
+    let (c, meta) = app.gh.repo(&fx.repository).await?;
+    let t = now();
+    let mut row = InheritanceRow {
+        id: new_id("inh"),
+        full_name: c.full_name.clone(),
+        name: c.name.clone(),
+        source_url: c.html_url.clone(),
+        license: c.license.clone(),
+        stage: Stage::Discovered.as_str().into(),
+        execution_mode: ExecMode::Docker.as_str().into(),
+        original_commit: None,
+        original_branch: None,
+        successor_name: format!("{}-successor (replay)", c.name),
+        github: meta,
+        created_at: t.clone(),
+        updated_at: t,
+    };
+    app.save_row(&mut row)?;
+    app.db.put_artifact(&row.id, "replay", &json!({"fixture": fx.name, "title": fx.title, "about": fx.about, "recorded_model": fx.recorded_model, "recorded_at": fx.recorded_at}))?;
+    app.start_job(&row.id, "replay", json!({"fixture": fx.name}))?;
+    Ok(Json(summary(&app, &row)))
 }
 
 async fn delete_inheritance(State(app): State<Arc<App>>, Path(id): Path<String>) -> R<Value> {

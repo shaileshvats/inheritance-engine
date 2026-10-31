@@ -169,6 +169,7 @@ export class RestorationTab {
       h('article', { class: 'repair card' },
         h('div', { class: 'repair-head' },
           pill(r.status),
+          r.replay_of ? h('span', { class: 'badge tone-info', title: `Replays recorded repair ${r.replay_of}` }, 'Replay: recorded output, live checks') : null,
           h('h5', null, issue ? issue.title : r.issue_id),
           h('span', { class: 'small muted' }, fmtDate(r.created_at, true)),
           r.commit ? h('span', { class: 'mono small' }, `commit ${shortSha(r.commit)}`) : null),

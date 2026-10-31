@@ -24,6 +24,31 @@ pub const INVESTIGATE_STEPS: &[&str] = &[
 
 // ---------- shared helpers ----------
 
+/// Deterministic inventory and trust passport of the successor's current tree (no model involved).
+pub(crate) async fn build_inventory(app: &App, id: &str) -> anyhow::Result<Inventory> {
+    let mut row = app.row(id)?;
+    let commit = row.original_commit.clone().unwrap_or_default();
+    let root = app.layout(id).successor();
+    let name = row.name.clone();
+    let c = commit.clone();
+    let mut prov = Provenance { source_url: row.source_url.clone(), original_commit: commit, cloned_at: now(), license: row.license.clone() };
+    if prov.license.is_none() {
+        if let Some(l) = inventory::detect_license_file(&root) {
+            prov.license = Some(format!("{l} (detected from LICENSE file)"));
+        }
+    }
+    let (inv, passport) = tokio::task::spawn_blocking(move || inventory::build(inventory::InventoryInput { root: &root, name: &name, commit: &c, provenance: prov })).await??;
+    if row.license.is_none() {
+        if let Some(l) = &passport.provenance.license {
+            row.license = Some(l.clone());
+            app.save_row(&mut row)?;
+        }
+    }
+    app.db.put_artifact(id, "inventory", &inv)?;
+    app.db.put_artifact(id, "passport", &passport)?;
+    Ok(inv)
+}
+
 fn inventory_of(app: &App, id: &str) -> anyhow::Result<Inventory> {
     app.db.get_artifact(id, "inventory")?.ok_or_else(|| anyhow::anyhow!("inventory missing; run the investigation first"))
 }
@@ -167,7 +192,7 @@ pub async fn run_suite(app: &App, id: &str, label: &str, custom_test: Option<&st
     }
 }
 
-fn verification_brief(v: &Verification) -> String {
+pub(crate) fn verification_brief(v: &Verification) -> String {
     let counts = v.summary.as_ref().map(|s| format!("{} passed, {} failed, {} errors, {} skipped", s.passed, s.failed, s.errors, s.skipped)).unwrap_or_else(|| "no test summary".into());
     format!("{} — status {} (exit code {}), {} — command `{}`{}", v.label, v.status, v.exit_code.map(|c| c.to_string()).unwrap_or_else(|| "none".into()), counts, v.command, v.reason.as_ref().map(|r| format!(" — {r}")).unwrap_or_default())
 }
@@ -354,7 +379,6 @@ pub async fn investigate(ctx: &mut JobCtx) -> anyhow::Result<()> {
         app.save_row(&mut row)?;
         ctx.finish("clone", "done", format!("original {} on {} preserved read-only; successor branch '{}' created", &res.commit[..12.min(res.commit.len())], res.branch, gitops::SUCCESSOR_BRANCH));
     }
-    let commit = row.original_commit.clone().unwrap_or_default();
 
     // 2. inventory
     ctx.begin("inventory").await?;
@@ -365,25 +389,8 @@ pub async fn investigate(ctx: &mut JobCtx) -> anyhow::Result<()> {
         }
         None => {
             app.set_stage(&id, Stage::Investigating)?;
-            let root = layout.successor();
-            let name = row.name.clone();
-            let c = commit.clone();
-            let mut prov = Provenance { source_url: row.source_url.clone(), original_commit: commit.clone(), cloned_at: now(), license: row.license.clone() };
-            if prov.license.is_none() {
-                if let Some(l) = inventory::detect_license_file(&root) {
-                    prov.license = Some(format!("{l} (detected from LICENSE file)"));
-                }
-            }
-            let (inv, passport) = tokio::task::spawn_blocking(move || inventory::build(inventory::InventoryInput { root: &root, name: &name, commit: &c, provenance: prov })).await??;
-            if row.license.is_none() {
-                if let Some(l) = &passport.provenance.license {
-                    row = app.row(&id)?;
-                    row.license = Some(l.clone());
-                    app.save_row(&mut row)?;
-                }
-            }
-            app.db.put_artifact(&id, "inventory", &inv)?;
-            app.db.put_artifact(&id, "passport", &passport)?;
+            let inv = build_inventory(&app, &id).await?;
+            row = app.row(&id)?;
             ctx.finish("inventory", "done", format!("{} files, {} import edges, {} decay hits, {} entry points", inv.files_total, inv.graph.edges.len(), inv.decay.len(), inv.entry_points.len()));
             inv
         }
@@ -996,6 +1003,7 @@ async fn repair_issue(app: &App, id: &str, inv: &Inventory, mut issue: Issue, be
         created_at: now(),
         attempt: 0,
         probe: None,
+        replay_of: None,
     };
     let mut feedback = String::new();
     let mut parent: Option<String> = None;
@@ -1245,7 +1253,7 @@ async fn repair_issue(app: &App, id: &str, inv: &Inventory, mut issue: Issue, be
 }
 
 /// Python names whose import a diff removed but which the edited file still uses: (path, name, line).
-fn dangling_names(root: &std::path::Path, diff: &str) -> Vec<(String, String, usize)> {
+pub(crate) fn dangling_names(root: &std::path::Path, diff: &str) -> Vec<(String, String, usize)> {
     let from_imp = regex::Regex::new(r"^\s*from\s+[\w.]+\s+import\s+\(?([^#]+)").unwrap();
     let plain_imp = regex::Regex::new(r"^\s*import\s+([^#]+)").unwrap();
     let names_of = |line: &str| -> Vec<String> {
@@ -1319,7 +1327,7 @@ fn resolved_by_rescan(app: &App, id: &str, inv: &Inventory, issue: &Issue) -> Op
 }
 
 /// (path, first_line, last_line) of the new-side hunks in a unified diff.
-fn changed_lines(diff: &str) -> Vec<(String, usize, usize)> {
+pub(crate) fn changed_lines(diff: &str) -> Vec<(String, usize, usize)> {
     let hunk = regex::Regex::new(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@").unwrap();
     let mut out = Vec::new();
     let mut file = String::new();

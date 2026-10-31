@@ -1,0 +1,96 @@
+{
+  "name": "fn-py-prflags",
+  "title": "fn.py: a Reviewer-approved, test-passing patch caught by the behaviour probe",
+  "about": "Recorded model output from a real run on 2026-10-31 (inheritance inh_2583373d06584b58, repair rep_3c4ccc574d204f3f, Gemma 4 E4B via LM Studio). A replay feeds the recorded patch, review and probe code through the engine's live checks: Docker tests, the probe on the original commit's era runtime and on the successor, and the revert rule. No model is called.",
+  "repository": "kachayev/fn.py",
+  "original_commit": "df53f5d6bf0e94a37f44f6be57d1c87c9b7a6c26",
+  "recorded_model": "google/gemma-4-e4b",
+  "recorded_at": "2026-10-31T11:24:00Z",
+  "seed": {
+    "description": "The successor state the patch was proposed against: the two earlier Gemma repairs that were reviewed, tested (126 passed) and committed in the recorded run.",
+    "commits": [
+      "ed0b4e4 Restore: Python version compatibility for ABCs and standard library components",
+      "cd83239 Restore: Use of deprecated inspect function getargspec"
+    ],
+    "diff": "diff --git a/fn/func.py b/fn/func.py\nindex b9d7562..6a07d4a 100644\n--- a/fn/func.py\n+++ b/fn/func.py\n@@ -1,5 +1,5 @@\n from functools import partial, wraps\n-from inspect import getargspec\n+from inspect import signature\n \n from .op import identity, flip\n \n@@ -75,9 +75,9 @@ def curried(func):\n                 count += len(f.args)\n             f = f.func\n \n-        spec = getargspec(f)\n+        spec = signature(f)\n \n-        if count == len(spec.args) - len(args):\n+        if count == len(signature(f).parameters) - len(args):\n             return func(*args, **kwargs)\n \n         return curried(partial(func, *args, **kwargs))\ndiff --git a/fn/iters.py b/fn/iters.py\nindex 8dc5f06..4b22931 100644\n--- a/fn/iters.py\n+++ b/fn/iters.py\n@@ -1,5 +1,6 @@\n from sys import version_info\n-from collections import deque, Iterable\n+from collections import deque\n+from collections.abc import Iterable\n from operator import add, itemgetter, attrgetter, not_\n from functools import partial\n from itertools import (islice,\n"
+  },
+  "issue": {
+    "id": "iss_5843af03_1",
+    "title": "Use of deprecated inspect function getargspec",
+    "category": "essential",
+    "severity": "high",
+    "diagnosis": "The test failure is caused by an `ImportError` because the function `getargspec` from the `inspect` module was removed in Python 3.11 and is unavailable in Python 3.12. This prevents the test collection process from completing.\n\nReopened by the inheritor (2026-10-28T02:17:20Z): Behaviour changed for curried functions that take *args or **kwargs. Original on Python 3.9: curried(lambda-like def star(a, b, *rest)) called as star(1)(2) returns (1, 2, ()), and def kw(a, b, **opts) returns (1, 2, []). The successor keeps waiting for more arguments instead. getargspec(f).args counted only named positional parameters; len(signature(f).parameters) also counts *args/**kwargs.",
+    "evidence": [
+      {
+        "check": "verified",
+        "end_line": 2,
+        "path": "fn/func.py",
+        "quote": "from inspect import getargspec",
+        "start_line": 2
+      }
+    ],
+    "proposed_fix": "Replace `getargspec` with a modern alternative like `inspect.signature` or `inspect.getfullargspec` in `fn/func.py`.",
+    "confidence": "high",
+    "source": "verification",
+    "reopened_note": "Behaviour changed for curried functions that take *args or **kwargs. Original on Python 3.9: curried(lambda-like def star(a, b, *rest)) called as star(1)(2) returns (1, 2, ()), and def kw(a, b, **opts) returns (1, 2, []). The successor keeps waiting for more arguments instead. getargspec(f).args counted only named positional parameters; len(signature(f).parameters) also counts *args/**kwargs.",
+    "status": "open"
+  },
+  "repair": {
+    "recorded_id": "rep_3c4ccc574d204f3f",
+    "rationale": "The original issue was the use of `getargspec`, which is deprecated. The proposed fix correctly identified replacing it with a modern alternative like `inspect.signature` or `inspect.getfullargspec`. However, the subsequent review noted an inconsistency: if `getfullargspec` is used to get the spec (`spec = getfullargspec(f)`), then argument counting must consistently use attributes of that result object (like `prflags`) rather than calling `signature(f)` again. By replacing both instances of `signature(f)` with calls/attributes derived from `getfullargspec`'s results, we ensure consistency and correctly count the total number of positional parameters (`prflags`), which is necessary for the currying logic to match Python 3.9 behavior regarding *args/**kwargs.",
+    "diff": "diff --git a/fn/func.py b/fn/func.py\nindex 6a07d4a..1cfb95c 100644\n--- a/fn/func.py\n+++ b/fn/func.py\n@@ -75,9 +75,9 @@ def curried(func):\n                 count += len(f.args)\n             f = f.func\n \n-        spec = signature(f)\n+        spec = getfullargspec(f)\n \n-        if count == len(signature(f).parameters) - len(args):\n+        if count == f.prflags - len(args):\n             return func(*args, **kwargs)\n \n         return curried(partial(func, *args, **kwargs))\n",
+    "files": [
+      "fn/func.py"
+    ],
+    "review": {
+      "call_id": "call_316bc44bdddb46b8",
+      "concerns": [
+        "The diff modifies `fn/func.py` to use `getfullargspec(f)` and subsequently uses `f.prflags` for argument counting, which is consistent with the stated goal of matching Python 3.9 behavior.",
+        "The replacement of `signature(f)` with `getfullargspec(f)` and subsequent attribute access (`f.prflags`) appears correct based on the provided rationale to maintain consistency when using `getfullargspec`."
+      ],
+      "evidence_supports_diagnosis": true,
+      "preserves_original_behaviour": true,
+      "problem_is_real": true,
+      "regression_risk": "low",
+      "root_cause_addressed": true,
+      "tests_exercise_change": false,
+      "verdict": "approve"
+    },
+    "probes": [
+      {
+        "name": "Reproduce human note behavior for *args and **kwargs",
+        "code": "from fn.func import curried\n@curried\ndef test_star(a, b, *rest):\n    return (a, b) + rest\n\n# Test case described in the human note: star(1)(2)\nresult1 = test_star(1)(2)\nprint(repr(result1))\n\n# Test case described in the human note: kw(a, b, **opts)\n@curried\ndef test_kw(a, b, **opts):\n    return (a, b) + list(opts.values())\n\n# Calling with positional arguments first, then keyword arguments\nresult2 = test_kw(1)(2)(c=3)\nprint(repr(result2))"
+      },
+      {
+        "name": "Test plain positional and default argument handling",
+        "code": "from fn.func import curried\n@curried\ndef test_plain(a, b):\n    return a + b\n\n# Simple positional arguments\nresult1 = test_plain(1)(2)\nprint(repr(result1))\n\n@curried\ndef test_default(x=5, y=10):\n    return x + y\n\n# Calling with no arguments (relying on defaults)\nresult2 = test_default()\nprint(repr(result2))"
+      },
+      {
+        "name": "Test handling of *args and **kwargs in function signature",
+        "code": "from fn.func import curried\n@curried\ndef test_mixed(a, b, *rest, **kwargs):\n    return (a, b) + list(rest) + list(kwargs.values())\n\n# Test case with explicit *args and **kwargs provided at the start\nresult1 = test_mixed(1, 2, 3, c=4)\nprint(repr(result1))\n\n@curried\ndef test_only_rest(*rest):\n    return list(rest)\n\n# Test case only using *args\nresult2 = test_only_rest(5, 6)\nprint(repr(result2))"
+      }
+    ],
+    "recorded_probe_results": [
+      {
+        "name": "Reproduce human note behavior for *args and **kwargs",
+        "original_output": "(1, 2)\nEXCEPTION TypeError",
+        "successor_output": "EXCEPTION NameError",
+        "verdict": "changed"
+      },
+      {
+        "name": "Test plain positional and default argument handling",
+        "original_output": "3\n<function curried.<locals>._curried at 0xffff81c39280>",
+        "successor_output": "EXCEPTION NameError",
+        "verdict": "changed"
+      },
+      {
+        "name": "Test handling of *args and **kwargs in function signature",
+        "original_output": "<function curried.<locals>._curried at 0xffff81c39430>\n<function curried.<locals>._curried at 0xffff81c395e0>",
+        "successor_output": "EXCEPTION NameError",
+        "verdict": "changed"
+      }
+    ],
+    "tester_call_id": "call_05df4426e2ec4bfa",
+    "recorded_outcome": "Behaviour probe: the successor (python:3.12-slim) no longer behaves like the original (python:3.9-slim) on code the tests do not cover; change reverted."
+  }
+}

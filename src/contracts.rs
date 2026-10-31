@@ -400,6 +400,9 @@ pub struct Repair {
     pub attempt: u32,
     #[serde(default)]
     pub probe: Option<ProbeReport>,
+    /// Set when this attempt replays recorded model output (patch, review, probe code) through live checks.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replay_of: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq, Eq)]

@@ -103,6 +103,7 @@ impl App {
             "verify" => vec!["verify"],
             "triage" => vec!["mastra: triage upstream issues"],
             "research" => vec![crate::pipeline::RESEARCH_STEP],
+            "replay" => crate::replay::STEPS.to_vec(),
             _ => anyhow::bail!("unknown job kind {kind}"),
         };
         let t = now();
@@ -141,6 +142,7 @@ impl App {
                 "verify" => crate::pipeline::verify_job(&mut ctx).await,
                 "triage" => crate::pipeline::triage_job(&mut ctx).await,
                 "research" => crate::pipeline::research_job(&mut ctx).await,
+                "replay" => crate::replay::replay_job(&mut ctx).await,
                 _ => Err(anyhow::anyhow!("unknown job kind")),
             };
             match result {

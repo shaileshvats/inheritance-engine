@@ -26,6 +26,7 @@ export class DashboardView {
     this.root = h('div', { class: 'page dashboard' });
     this.resultsEl = h('section', { class: 'hunt-results', 'aria-live': 'polite', 'aria-busy': 'false' });
     this.listEl = h('div', { class: 'inheritance-grid' }, spinner('Loading inheritances'));
+    this.replayEl = h('div', { class: 'replay-slot' });
 
     this.root.append(
       h('section', { class: 'hero' },
@@ -35,13 +36,42 @@ export class DashboardView {
       this.resultsEl,
       h('section', { class: 'section' },
         h('div', { class: 'section-head' }, h('h2', null, 'Your inheritances')),
-        this.listEl));
+        this.listEl),
+      this.replayEl);
+    this.loadReplays();
 
     this.poller = new Poller(() => this.loadList(), () => this.activeCount ? 2500 : 10000).start();
     return this.root;
   }
 
   destroy() { if (this.poller) this.poller.stop(); }
+
+  // ---------- Replays: recorded model output through live checks ----------
+
+  async loadReplays() {
+    let res;
+    try { res = await api.replays(); } catch { return; }
+    if (!(res.replays || []).length) return;
+    replace(this.replayEl, h('section', { class: 'section' },
+      h('div', { class: 'section-head' }, h('h2', null, 'Replay a recorded catch')),
+      h('p', { class: 'small muted' }, 'No model needed. A replay takes what Gemma produced in a real recorded run (a patch, the Reviewer\'s verdict, the Tester\'s probe code) and runs it through the engine\'s live checks: Docker tests, the behaviour probe on the original\'s era runtime and on the successor, and the revert rule. It needs Docker and network access to GitHub and the Python package index, and it never commits recorded output.'),
+      res.replays.map((r) => {
+        const go = h('button', { type: 'button', class: 'btn btn-secondary' }, 'Run this replay');
+        const out = h('div', { 'aria-live': 'polite' });
+        go.onclick = async () => {
+          go.disabled = true;
+          try {
+            const inh = await api.startReplay(r.name);
+            location.hash = `#/i/${encodeURIComponent(inh.id)}`;
+          } catch (e) { go.disabled = false; replace(out, errorBox(e)); }
+        };
+        return h('article', { class: 'card replay-card' },
+          h('h3', null, r.title),
+          h('p', { class: 'small' }, r.about),
+          h('p', { class: 'small muted' }, 'Repository: ', h('span', { class: 'mono' }, r.repository)),
+          go, out);
+      })));
+  }
 
   // ---------- Search ----------
 
