@@ -166,6 +166,24 @@ it was found on. On an inheritance, *Research on the web* runs three searches an
 and documentation. Every item must cite a real result or the engine drops it, and the result feeds the Lead Engineer.
 Only search text and public repository names are sent.
 
+**Restoration memory (Tiger Data).** Set `IE_MEMORY_DATABASE_URL` for the companion to give the Lead Engineer a
+memory of every repair attempt across all inheritances, with what was kept, what was reverted and why. It lives in
+Postgres with pgvector and pgvectorscale (Tiger Data's open-source `timescaledb-ha` image, DiskANN index), is embedded
+by a local model, and is searched with hybrid keyword + vector ranking. Both the database and the embeddings must be
+loopback. See [`companion/mastra`](companion/mastra/README.md#restoration-memory-optional-tiger-data).
+
+**Durable runs (Temporal).** [`companion/temporal`](companion/temporal/README.md) runs one Temporal workflow that takes
+a repository from inheritance through investigation, restoration, web research and triage to the Inheritance Record,
+without anyone watching. It waits out a model, Docker or companion that is down, resumes after a worker crash or an
+engine restart, and re-runs a failed job a bounded number of times. It uses a local Temporal dev server, and only ids
+and statuses enter Temporal's history.
+
+**Continuous verification (GitHub Actions).** [`ci.yml`](.github/workflows/ci.yml) runs clippy, the engine, Mastra and
+Temporal test suites (the memory tests against Tiger Data's Postgres image), and the signature **replay end to end** on
+a clean GitHub runner with no model and no secrets. It fails unless the behaviour probe still catches the recorded
+patch, and uploads the resulting Inheritance Record. `scripts/replay-check.sh` makes the same check against any running
+engine.
+
 **Self-hosting.** [`deploy/self-host`](deploy/self-host/README.md) is a Docker Compose stack (engine, companion,
 Ollama with Gemma 4, Docker sandboxes) for a dedicated Linux host, reachable only through SSH. Its images were built
 and run locally; it has not been deployed to any cloud provider.
@@ -179,6 +197,7 @@ and run locally; it has not been deployed to any cloud provider.
 | Repairs, Docker tests (network off), behaviour probes, revert rules | Pulling Docker images the first time |
 | `INHERITANCE.md` and the Inheritance Record | Mastra upstream-issue triage (reads GitHub issues) |
 | The Mastra Lead Engineer chat (local model) | SerpApi web search and Sentry tracing, both optional |
+| Restoration memory (local Postgres, local embeddings) and Temporal runs (local dev server) | GitHub Actions CI (runs on GitHub) |
 
 Repository content never leaves the machine: SerpApi receives search text and public repository names, and Sentry
 receives metadata only.
@@ -189,7 +208,9 @@ receives metadata only.
 cargo test
 ```
 
-The engine has 59 Rust tests and the Mastra companion has 19 vitest tests (`cd companion/mastra && npm test`). They cover path traversal and symlink escapes, atomic edits, locked-down Docker
+The engine has 61 Rust tests, the Mastra companion 24 vitest tests (26 with a memory database; `cd companion/mastra &&
+npm test`) and the Temporal companion 11 (`cd companion/temporal && npm test`). GitHub Actions runs all of them on every
+push, plus the replay. They cover path traversal and symlink escapes, atomic edits, locked-down Docker
 arguments, the cleared native environment, push being disabled and the original staying untouched, privacy policy
 enforcement, secret redaction, fabricated-citation detection, the regression and improvement rules, dangling-import
 detection, traceback parsing, test-summary parsing, and era-runtime selection. End-to-end runs against real repositories

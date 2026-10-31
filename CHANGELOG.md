@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — 2026-10-31 (partner integrations)
+
+- GitHub Actions CI (`.github/workflows/ci.yml`): clippy and Rust tests, Mastra and Temporal suites, restoration-memory
+  tests against Tiger Data's Postgres image, and the replay end to end in Docker on a clean runner, uploading the
+  Inheritance Record. `scripts/replay-check.sh` asserts the catch against any engine.
+- Temporal companion (`companion/temporal`): durable `inheritAndRestore` workflow over the engine's jobs (waits out
+  services, resumes after worker or engine restarts, bounded re-runs, skips unconfigured partners). 11 tests.
+- Restoration memory in the Mastra companion: repair attempts from all inheritances in Postgres + pgvector +
+  pgvectorscale (DiskANN), local embeddings, hybrid keyword + vector search, a Lead Engineer tool. 7 tests.
+- No engine (Rust) code changed.
+
 ## Unreleased — 2026-10-28
 
 - Mastra companion (`companion/mastra`): Lead Engineer agent with engine tools, grounded `answer-lead-question`
