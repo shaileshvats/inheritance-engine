@@ -1,7 +1,8 @@
 # Demo video: shot list (about 3 minutes)
 
-Everything shown is the real recorded state of the fn.py inheritance plus **one live Gemma call** (the Lead chat).
-Nothing is staged or edited into the UI.
+Everything shown is the real recorded state of the fn.py inheritance, **one live replay** (recorded model output through
+live checks, labelled as a replay in the UI) and **one live Gemma call** (the Lead chat). Nothing is staged or edited
+into the UI.
 
 ## Before recording
 
@@ -20,10 +21,10 @@ Nothing is staged or edited into the UI.
 | 0:35–0:50 | Dashboard → fn.py header: *Original untouched*, successor branch, stage tracker | "Inheritance Engine keeps the original read-only and works in a successor with pushing disabled." |
 | 0:50–1:05 | **Archaeology** tab: Reviewer challenges, the engine's citation checks | "A team of Gemma agents, running on this laptop, investigates. Every quote is re-read from disk by the engine, not trusted from the model." |
 | 1:05–1:30 | **Restoration** tab: the attempts in order (reverted by engine, dangling import, Reviewer reject, behaviour probe catch), then 126 passed | "The model proposes, the engine verifies. This probe ran the original on Python 3.9 and the successor on 3.12. Original said 3, 6, 6; the repair said TypeError. Reverted." |
-| 1:30–2:00 | The Oct 31 *Reverted* card: Reviewer **Approved** `f.prflags`, 126 passed before and after, then the behaviour probe table (3 changed, first probe "Reproduce human note behavior") | "A human found a behaviour change with *args and reopened the issue. Today Gemma's Reviewer approved a fix that invented an attribute, and the tests stayed green. The Tester turned my note into a probe, ran the original on Python 3.9, and the engine reverted it." |
+| 1:30–2:05 | Dashboard → *Replay a recorded catch* → **Run this replay**. Watch the steps tick (about 20 s), then open Restoration: the *Replay* badge, Reviewer **Approved** `f.prflags`, 126 passed before and after, the probe table (3 changed) | "A human found a behaviour change with *args and reopened the issue. On Oct 31 Gemma's Reviewer approved a fix that invented an attribute, and the tests stayed green. This is a replay: the patch and the review are what Gemma wrote that day, but the tests, the probes on Python 3.9 and 3.12, and the revert are happening live, right now, with no model involved." |
 | 2:00–2:25 | **Overview**: Mastra triage card, then the *On the web* card (cited [W1] [W2]). Then ask the Lead live: *"What is still unresolved, and where are the docs?"* | "A Mastra workflow triages the original's open issues; web research gives the agents cited sources. The Lead Engineer is a Mastra agent over the same local Gemma." |
 | 2:25–2:40 | Sentry: AI Agents overview → engine trace → a model call showing *No input for this span* | "Sentry shows every agent call, tokens and latency, and none of the code." |
-| 2:40–2:55 | **Record & lineage**: `INHERITANCE.md` naming Alexey Kachayev and the other authors | "The first thing the successor gets is the names of the people who built it." |
+| 2:40–2:55 | **Record & lineage** on fn.py: lineage starting at Alexey Kachayev's 2014 commit, then *Download record (JSON)* | "Every repair, accepted or reverted, goes into the Inheritance Record, next to the names of the people who built the code. The successor never forgets whose it is." |
 
 ## If the live chat is slow
 

@@ -154,3 +154,9 @@ Fix 1 (`from unittest.mock import MagicMock, ...`) reverted by the engine: `Mock
 (`from unittest.mock import Mock, call, patch`) approved and committed: 7 passed, 28 failed. Re-diagnosis found two
 Python 3 bound-method issues. Next pass: one Restorer call truncated at the token limit, one fix reverted because the
 failure originated in the edited line, one rejected by the Reviewer. Stage: *restoring*.
+
+**Replays (afternoon of 2026-10-31).** The `f.prflags` catch is bundled as a replay
+(`fixtures/replay/fn-py-prflags.json`): the recorded patch, Reviewer verdict and probe code go through live checks. Four
+runs (two with the model endpoint unreachable, one from a fresh clone, one on the demo engine): each time 126 → 126
+passed, 3 of 3 probes changed, reverted. The full readiness pass, including what failed, is in
+[readiness-2026-10-31.md](readiness-2026-10-31.md).
