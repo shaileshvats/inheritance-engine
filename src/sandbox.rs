@@ -187,8 +187,14 @@ async fn run_native(req: RunRequest<'_>) -> anyhow::Result<RunOutcome> {
             Ok(RunOutcome { exit_code: out.status.code(), output: text, duration_ms, timed_out: false, environment, network: "host".into(), command })
         }
         Err(_) => {
+            // Kill the whole process group directly (the child was started as its group leader), rather than spawning
+            // `kill` and awaiting it: that extra child hung on GitHub's Ubuntu runners.
+            #[cfg(unix)]
             if let Some(pid) = pid {
-                let _ = tokio::process::Command::new("kill").args(["-9", &format!("-{pid}")]).output().await;
+                // SAFETY: killpg only sends a signal; a group that has already exited yields ESRCH, which is ignored.
+                unsafe {
+                    libc::killpg(pid as libc::pid_t, libc::SIGKILL);
+                }
             }
             Ok(RunOutcome { exit_code: None, output: format!("timed out after {}s; process group killed", req.timeout.as_secs()), duration_ms, timed_out: true, environment, network: "host".into(), command })
         }

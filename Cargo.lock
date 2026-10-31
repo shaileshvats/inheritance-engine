@@ -816,6 +816,7 @@ dependencies = [
  "anyhow",
  "axum",
  "chrono",
+ "libc",
  "regex",
  "reqwest",
  "rusqlite",

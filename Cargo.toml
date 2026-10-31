@@ -8,6 +8,7 @@ license-file = "LICENSE"
 publish = false
 
 [dependencies]
+libc = "0.2.191"
 anyhow = "1"
 axum = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
