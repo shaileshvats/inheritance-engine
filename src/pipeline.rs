@@ -1484,7 +1484,8 @@ fn research_queries(row: &InheritanceRow) -> Vec<String> {
     vec![
         format!("\"{}\"", row.full_name),
         format!("{} {}", row.name, topic).trim().to_string(),
-        format!("{} {} documentation", row.name, row.github.owner),
+        // Not the owner's name: on 2026-10-31 that query returned the author's personal social profiles.
+        format!("{} {} documentation", row.name, topic).split_whitespace().collect::<Vec<_>>().join(" "),
     ]
 }
 
@@ -1494,6 +1495,12 @@ pub fn check_research(v: &Value, results: &[crate::websearch::WebResult], own_re
     let url_of = |cid: &str| results.iter().find(|r| r.id == cid).map(|r| r.url.clone());
     let docs_url = |cites: &[String]| cites.iter().find_map(|c| results.iter().find(|r| &r.id == c && r.kind == "docs")).map(|r| r.url.clone());
     let valid = |a: &Value| -> Vec<String> { a.as_array().map(|a| a.as_slice()).unwrap_or_default().iter().filter_map(|c| c.as_str()).map(|c| c.trim().trim_matches(|ch| ch == '[' || ch == ']').to_string()).filter(|c| url_of(c).is_some()).collect() };
+    let name = own_repo.rsplit('/').next().unwrap_or(own_repo).to_lowercase();
+    // A citation proves a source exists, not that it says what the model claims. Lineage claims at least need a
+    // cited source that names the project (skipped for names too short to search for).
+    let mentions_project = |cites: &[String]| {
+        name.len() < 3 || cites.iter().filter_map(|c| results.iter().find(|r| &r.id == c)).any(|r| format!("{} {} {}", r.title, r.snippet, r.url).to_lowercase().contains(&name))
+    };
     let mut dropped = 0;
     let mut keep = |items: &Value, docs: bool| -> Vec<Value> {
         let mut seen = BTreeSet::new();
@@ -1513,6 +1520,13 @@ pub fn check_research(v: &Value, results: &[crate::websearch::WebResult], own_re
             let is_own = results.iter().any(|r| r.id == cites[0] && r.repo.as_deref().is_some_and(|x| x.eq_ignore_ascii_case(own_repo)));
             if !docs && is_own {
                 it["relation"] = json!("original");
+            } else if !docs && it["relation"] == "original" {
+                // Only the inherited repository is the original, and the engine knows which one that is.
+                it["engine_note"] = json!(format!("downgraded from 'original': the original is {own_repo}"));
+                it["relation"] = json!("mention");
+            } else if !docs && matches!(it["relation"].as_str(), Some("successor" | "fork")) && !mentions_project(&cites) {
+                it["engine_note"] = json!(format!("downgraded from '{}': no cited source mentions {name}", it["relation"].as_str().unwrap_or("")));
+                it["relation"] = json!("mention");
             }
             it["url"] = json!(url);
             it["cites"] = json!(cites);
@@ -1670,6 +1684,26 @@ mod tests {
         assert_eq!(out["documentation"].as_array().unwrap().len(), 1);
         assert_eq!(out["dropped_uncited"], json!(3));
         assert_eq!(out["summary_check"], json!("citations verified"));
+    }
+
+    #[test]
+    fn lineage_claims_need_a_source_that_names_the_project() {
+        // Real case, 2026-10-31: Gemma called CPython's signal module a "successor" of shaunduncan/smokesignal.
+        let mut cpython = crate::websearch::WebResult { id: "W1".into(), query: "q".into(), title: "cpython/Lib/signal.py at main".into(), url: "https://github.com/python/cpython/blob/main/Lib/signal.py".into(), snippet: "Signal handling".into(), source: String::new(), kind: "github_repo".into(), repo: Some("python/cpython".into()) };
+        let fork = crate::websearch::WebResult { id: "W2".into(), title: "someone/smokesignal: fork of shaunduncan/smokesignal".into(), url: "https://github.com/someone/smokesignal".into(), repo: Some("someone/smokesignal".into()), ..cpython.clone() };
+        cpython.snippet = "Set handlers for asynchronous events".into();
+        let v = json!({"summary": "", "summary_cites": [], "documentation": [], "related": [
+            {"name": "cpython signal", "relation": "successor", "note": "", "cites": ["W1"]},
+            {"name": "someone/smokesignal", "relation": "fork", "note": "", "cites": ["W2"]},
+            {"name": "cpython signal", "relation": "alternative", "note": "", "cites": ["W1"]}
+        ]});
+        let v2 = json!({"summary": "", "summary_cites": [], "documentation": [], "related": [{"name": "cpython", "relation": "original", "note": "", "cites": ["W1"]}]});
+        let out2 = check_research(&v2, std::slice::from_ref(&cpython), "shaunduncan/smokesignal");
+        assert_eq!(out2["related"][0]["relation"], json!("mention"));
+        let out = check_research(&v, &[cpython, fork], "shaunduncan/smokesignal");
+        assert_eq!(out["related"][0]["relation"], json!("mention"));
+        assert!(out["related"][0]["engine_note"].as_str().unwrap().contains("smokesignal"));
+        assert_eq!(out["related"][1]["relation"], json!("fork"));
     }
 
     #[test]

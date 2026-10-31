@@ -173,7 +173,8 @@ export class OverviewTab {
       h('p', { class: 'small muted' }, 'Live search results (SerpApi) about this project, summarised by Gemma. Every item must cite a real result, or the engine drops it.'),
       w ? [
         h('p', { class: 'small' }, w.summary, cites(w.summary_cites)),
-        (w.related || []).length ? h('ul', { class: 'triage-list' }, w.related.map((r) => h('li', null, pill('info', titleCase(r.relation)), ' ', link(r.url, r.name), ' ', h('span', { class: 'small muted' }, r.note), cites(r.cites)))) : null,
+        (w.related || []).length ? h('ul', { class: 'triage-list' }, w.related.map((r) => h('li', null, pill('info', titleCase(r.relation)), ' ', link(r.url, r.name), ' ', h('span', { class: 'small muted' }, r.note), cites(r.cites),
+          r.engine_note ? h('span', { class: 'small engine-note' }, ` Engine: ${r.engine_note}.`) : null))) : null,
         (w.documentation || []).length ? h('ul', { class: 'triage-list' }, w.documentation.map((x) => h('li', null, pill('muted', 'Docs'), ' ', link(x.url, x.title), cites(x.cites)))) : null,
         h('details', { class: 'small' }, h('summary', null, `${fmtNum((w.results || []).length)} results from ${fmtNum((w.queries || []).length)} searches · ${fmtNum(w.dropped_uncited || 0)} uncited item(s) dropped · ${fmtDate(w.researched_at, true)}`),
           h('ol', null, (w.results || []).map((r) => h('li', null, `[${r.id}] `, link(r.url, r.title || r.url), ' ', h('span', { class: 'muted' }, r.source))))),

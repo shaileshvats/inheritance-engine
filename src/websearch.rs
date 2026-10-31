@@ -94,7 +94,7 @@ pub fn parse_results(query: &str, v: &Value) -> Vec<WebResult> {
         .iter()
         .filter_map(|r| {
             let url = r["link"].as_str()?.to_string();
-            if !(url.starts_with("https://") || url.starts_with("http://")) || is_search_redirect(&url) {
+            if !(url.starts_with("https://") || url.starts_with("http://")) || is_search_redirect(&url) || is_personal_profile(&url) {
                 return None;
             }
             let repo = repo_from_url(&url);
@@ -138,6 +138,15 @@ pub fn repo_from_url(url: &str) -> Option<String> {
 /// Google redirect links hide the real destination, so they can't be cited.
 fn is_search_redirect(url: &str) -> bool {
     reqwest::Url::parse(url).ok().and_then(|u| u.host_str().map(|h| h == "google.com" || h.starts_with("www.google.") || h.starts_with("google."))).unwrap_or(false)
+}
+
+/// Pages about people rather than software. A project search should never surface someone's personal profiles.
+fn is_personal_profile(url: &str) -> bool {
+    let Ok(u) = reqwest::Url::parse(url) else { return false };
+    let host = u.host_str().unwrap_or("").trim_start_matches("www.").trim_start_matches("m.");
+    const SOCIAL: &[&str] = &["facebook.com", "instagram.com", "linkedin.com", "x.com", "twitter.com", "tiktok.com", "pinterest.com", "threads.net"];
+    SOCIAL.iter().any(|s| host == *s || host.ends_with(&format!(".{s}")))
+        || (host == "youtube.com" && ["/channel/", "/@", "/c/", "/user/"].iter().any(|p| u.path().starts_with(p)))
 }
 
 fn is_docs(url: &str) -> bool {
@@ -193,6 +202,19 @@ mod tests {
         assert_eq!((r[0].id.as_str(), r[0].kind.as_str(), r[0].repo.as_deref()), ("W1", "github_repo", Some("kachayev/fn.py")));
         assert_eq!(r[1].kind, "docs");
         assert_eq!((r[2].kind.as_str(), r[2].source.as_str()), ("page", "blog.example.com"));
+    }
+
+    #[test]
+    fn personal_profiles_are_not_results() {
+        let v = json!({"organic_results": [
+            {"title": "Shaun Duncan", "link": "https://www.facebook.com/public/Shaun-Duncan"},
+            {"title": "x", "link": "https://www.instagram.com/someone/"},
+            {"title": "channel", "link": "https://www.youtube.com/channel/UCB0_8GqKhXcTbcXR-C0EqkQ"},
+            {"title": "PyCon talk", "link": "https://www.youtube.com/watch?v=abc"},
+            {"title": "smokesignal", "link": "https://github.com/shaunduncan/smokesignal"}
+        ]});
+        let urls: Vec<String> = parse_results("q", &v).into_iter().map(|r| r.url).collect();
+        assert_eq!(urls, vec!["https://www.youtube.com/watch?v=abc", "https://github.com/shaunduncan/smokesignal"]);
     }
 
     #[test]
