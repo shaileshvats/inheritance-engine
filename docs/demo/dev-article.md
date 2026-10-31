@@ -38,7 +38,11 @@ agent in it runs on **Gemma 4, on my laptop**.
 
 ## Demo
 
-> 🎥 **VIDEO PLACEHOLDER:** the demo video is not recorded yet. This block will be replaced with the YouTube or Loom embed before publishing.
+[![Demo video: real footage of the app. Click to play.](https://raw.githubusercontent.com/shaileshvats/inheritance-engine/3a58ea9304d4a9fb6f457b56643911d14d5e68f5/docs/demo/video/poster.jpg)](https://cdn.jsdelivr.net/gh/shaileshvats/inheritance-engine@3a58ea9304d4a9fb6f457b56643911d14d5e68f5/docs/demo/video/inheritance-engine-demo.mp4)
+
+**[▶ Watch the 3½-minute demo](https://cdn.jsdelivr.net/gh/shaileshvats/inheritance-engine@3a58ea9304d4a9fb6f457b56643911d14d5e68f5/docs/demo/video/inheritance-engine-demo.mp4)** (MP4, no audio). It is real footage of the app running on my laptop, driven by
+a script in headless Chrome. Corner badges mark what is live, what is stored from earlier real runs, what is a replay,
+the two Sentry screenshots, and the one fast-forwarded wait. [How it was recorded and edited](https://github.com/shaileshvats/inheritance-engine/blob/main/docs/demo/video/README.md).
 
 The demo inherits [kachayev/fn.py](https://github.com/kachayev/fn.py), "Functional programming in Python" (Apache-2.0,
 about 3.4k stars, last commit on its default branch in October 2014). On Python 3.12 its tests don't even start:
