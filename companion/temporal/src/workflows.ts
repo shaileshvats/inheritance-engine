@@ -44,10 +44,11 @@ const waits = proxyActivities<Activities>({
 });
 
 // Calls that change or follow engine state. awaitJob heartbeats; a missed heartbeat (worker or engine gone) means
-// another worker picks it up and resumes following the same job.
+// another worker picks it up and resumes following the same job. The SDK throttles heartbeats to 80% of this timeout
+// (at most 60 s), so two minutes leaves a minute of slack for a busy machine.
 const engine = proxyActivities<Activities>({
   startToCloseTimeout: '3 hours',
-  heartbeatTimeout: '1 minute',
+  heartbeatTimeout: '2 minutes',
   retry: { initialInterval: '5 seconds', backoffCoefficient: 2, maximumInterval: '1 minute', maximumAttempts: 50 },
 });
 
