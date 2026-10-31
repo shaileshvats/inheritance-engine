@@ -53,6 +53,21 @@ fn render_script(probes: &[(String, String)]) -> String {
     s
 }
 
+/// Object reprs carry memory addresses (`<function f at 0xffff81c39280>`) that differ between any two runs.
+fn normalise(line: &str) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut rest = line;
+    while let Some(i) = rest.find(" at 0x") {
+        out.push_str(&rest[..i + 6]);
+        let tail = &rest[i + 6..];
+        let n = tail.chars().take_while(|c| c.is_ascii_hexdigit()).count();
+        out.push_str(if n > 0 { "…" } else { "" });
+        rest = &tail[n..];
+    }
+    out.push_str(rest);
+    out
+}
+
 fn split_outputs(output: &str) -> Vec<(String, String)> {
     let mut out: Vec<(String, String)> = Vec::new();
     for line in output.lines() {
@@ -60,7 +75,7 @@ fn split_outputs(output: &str) -> Vec<(String, String)> {
             out.push((name.trim().to_string(), String::new()));
         } else if let Some(last) = out.last_mut() {
             if !line.trim().is_empty() && !line.contains("Warning:") && !line.trim_start().starts_with("warnings.warn") {
-                last.1.push_str(line.trim_end());
+                last.1.push_str(&normalise(line.trim_end()));
                 last.1.push('\n');
             }
         }
@@ -97,8 +112,15 @@ fn ensure_excluded(successor: &std::path::Path) {
     }
 }
 
-/// Run behaviour probes for a repair. Returns None when probing does not apply.
-pub async fn run(app: &App, id: &str, issue: &Issue, diff: &str, files: &[String], parent: Option<String>) -> anyhow::Result<Option<ProbeReport>> {
+/// Where a probe runs: the successor on the modern runtime, the original commit on the runtime of its era.
+pub struct ProbeTarget {
+    pub legacy: String,
+    pub modern: String,
+    commit: String,
+}
+
+/// None when probing does not apply (not Docker, no Python changed, or only tests changed).
+pub fn target(app: &App, id: &str, files: &[String]) -> anyhow::Result<Option<ProbeTarget>> {
     let row = app.row(id)?;
     if row.execution_mode != "docker" || !files.iter().any(|f| f.ends_with(".py")) || files.iter().all(|f| crate::inventory::is_test_path(f)) {
         return Ok(None);
@@ -109,9 +131,14 @@ pub async fn run(app: &App, id: &str, issue: &Issue, diff: &str, files: &[String
     };
     let modern = app.cfg.python_image.clone();
     let legacy = legacy_python_image(&inv, &modern).unwrap_or_else(|| modern.clone());
-    let commit = row.original_commit.clone().unwrap_or_default();
-    let layout = app.layout(id);
-    let successor = layout.successor();
+    Ok(Some(ProbeTarget { legacy, modern, commit: row.original_commit.clone().unwrap_or_default() }))
+}
+
+/// Run behaviour probes for a repair. Returns None when probing does not apply.
+pub async fn run(app: &App, id: &str, issue: &Issue, diff: &str, files: &[String], parent: Option<String>) -> anyhow::Result<Option<ProbeReport>> {
+    let Some(t) = target(app, id, files)? else { return Ok(None) };
+    let (legacy, modern) = (t.legacy.clone(), t.modern.clone());
+    let successor = app.layout(id).successor();
 
     // 1. The Tester writes probes for the changed code.
     let n = agents::nonce();
@@ -142,7 +169,17 @@ pub async fn run(app: &App, id: &str, issue: &Issue, diff: &str, files: &[String
     if probes.is_empty() {
         return Ok(Some(ProbeReport { tester_call_id: Some(call_id), legacy_image: legacy, modern_image: modern, probes: vec![], verdict: "inconclusive".into(), note: Some("The Tester proposed no probes.".into()) }));
     }
-    let script = render_script(&probes);
+    execute(app, id, &t, &probes, Some(call_id), "probe script written by the Tester agent; compares successor behaviour with the original").await.map(Some)
+}
+
+/// Run probe snippets on the successor and on the original commit, and compare what they print.
+/// No model is involved: `probes` come from the Tester agent, or from a recorded run when replaying.
+pub async fn execute(app: &App, id: &str, t: &ProbeTarget, probes: &[(String, String)], tester_call_id: Option<String>, reason: &str) -> anyhow::Result<ProbeReport> {
+    let (legacy, modern, commit) = (t.legacy.clone(), t.modern.clone(), t.commit.clone());
+    let layout = app.layout(id);
+    let successor = layout.successor();
+    let call_id = tester_call_id;
+    let script = render_script(probes);
 
     // 2. Run on the successor (modern runtime) and on the original commit (era runtime).
     let original_dir = export_original(app, id, &commit)?;
@@ -158,7 +195,7 @@ pub async fn run(app: &App, id: &str, issue: &Issue, diff: &str, files: &[String
         let image = image.as_str();
         if let Err(e) = sandbox::ensure_image(image).await {
             let _ = std::fs::remove_dir_all(successor.join(PROBE_DIR));
-            return Ok(Some(ProbeReport { tester_call_id: Some(call_id), legacy_image: legacy.clone(), modern_image: modern.clone(), probes: vec![], verdict: "inconclusive".into(), note: Some(format!("could not obtain {image}: {e}")) }));
+            return Ok(ProbeReport { tester_call_id: call_id, legacy_image: legacy.clone(), modern_image: modern.clone(), probes: vec![], verdict: "inconclusive".into(), note: Some(format!("could not obtain {image}: {e}")) });
         }
         let out = sandbox::run(RunRequest {
             mode: ExecMode::Docker,
@@ -189,7 +226,7 @@ pub async fn run(app: &App, id: &str, issue: &Issue, diff: &str, files: &[String
             started_at: now(),
             workspace_rev: if label == "successor" { gitops::head(&successor).ok() } else { Some(commit.clone()) },
             network: out.network.clone(),
-            reason: Some("probe script written by the Tester agent; compares successor behaviour with the original".into()),
+            reason: Some(reason.into()),
         };
         app.db.put(Kind::Verification, &ver.id, Some(id), &ver.started_at, &ver)?;
         outputs.push(split_outputs(&output));
@@ -200,7 +237,7 @@ pub async fn run(app: &App, id: &str, issue: &Issue, diff: &str, files: &[String
     let (succ, orig) = (&outputs[0], &outputs[1]);
     let mut results = Vec::new();
     let mut seen = BTreeSet::new();
-    for (name, code) in &probes {
+    for (name, code) in probes {
         let key = name.replace(['\'', '\\', '\n'], "_");
         if !seen.insert(key.clone()) {
             continue;
@@ -218,14 +255,14 @@ pub async fn run(app: &App, id: &str, issue: &Issue, diff: &str, files: &[String
     let changed = results.iter().filter(|r| r.verdict == "changed").count();
     let preserved = results.iter().filter(|r| r.verdict == "preserved").count();
     let verdict = if changed > 0 { "changed" } else if preserved > 0 { "preserved" } else { "inconclusive" };
-    Ok(Some(ProbeReport {
-        tester_call_id: Some(call_id),
+    Ok(ProbeReport {
+        tester_call_id: call_id,
         legacy_image: legacy,
         modern_image: modern,
         note: Some(format!("{preserved} preserved, {changed} changed, {} inconclusive", results.len() - preserved - changed)),
         probes: results,
         verdict: verdict.into(),
-    }))
+    })
 }
 
 pub fn feedback(report: &ProbeReport) -> String {
@@ -278,5 +315,14 @@ mod tests {
         let out = format!("{MARK} a\n1\n{MARK} b\nEXCEPTION ValueError\n");
         let parts = split_outputs(&out);
         assert_eq!(parts, vec![("a".to_string(), "1\n".to_string()), ("b".to_string(), "EXCEPTION ValueError\n".to_string())]);
+    }
+
+    #[test]
+    fn memory_addresses_do_not_count_as_behaviour() {
+        let run1 = split_outputs(&format!("{MARK} p\n<function curried.<locals>._curried at 0xffff81c39280>\n"));
+        let run2 = split_outputs(&format!("{MARK} p\n<function curried.<locals>._curried at 0x7f3a2b1c0d40>\n"));
+        assert_eq!(run1, run2);
+        assert_eq!(normalise("x at 0xZZ and <f at 0xabc>"), "x at 0xZZ and <f at 0x…>");
+        assert_eq!(normalise("(1, 2)"), "(1, 2)");
     }
 }
