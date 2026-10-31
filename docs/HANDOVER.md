@@ -23,7 +23,7 @@ All optional; see [`.env.example`](../.env.example). Nothing requires an account
 
 ## 5. Tests and their real results
 
-- `cargo test`: **57 passed, 0 failed** (re-run 2026-10-31). `cargo clippy --all-targets`: no warnings.
+- `cargo test`: **61 passed, 0 failed** (re-run 2026-10-31). `cargo clippy --all-targets`: no warnings.
 - `npm test` in `companion/mastra`: **19 passed** (re-run 2026-10-31).
 - End-to-end runs on kachayev/fn.py with Gemma 4 E4B: see [demo/README.md](demo/README.md). That document reports
   the failures too.
