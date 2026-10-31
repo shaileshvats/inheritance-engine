@@ -121,3 +121,36 @@ These runs surfaced engine bugs that were then fixed:
   start the run beforehand and present the recorded result: the UI, traces, and Record are the real ones. Run one fresh
   agent call live, such as a Lead chat question or *Why is this interesting?*.
 - Durable jobs mean that a crash or restart does not lose progress. Resume continues from the last completed step.
+
+## Submission day (2026-10-31)
+
+All runs below were real, on Gemma 4 E4B in LM Studio, with the final engine.
+
+**fn.py, reopened `*args` issue: two more restore passes.**
+
+| Patch | Outcome |
+| --- | --- |
+| `getfullargspec(f)` but `signature(f)` left in the condition | Reviewer rejected |
+| `f.locals['max_var']` (invented) | Reviewer rejected |
+| Same half-fix as the first | Reviewer rejected |
+| `f.prflags` (invented) | **Reviewer approved**, tests 126 → 126; the Tester's first probe was "Reproduce human note behavior for *args and **kwargs"; original on 3.9 `(1, 2)`, successor `NameError`; 0 preserved, 3 changed; **reverted** |
+
+The successor stays *restoring*: 126 passed, not marked verified while the inheritor's reopened issue is open.
+
+**Mastra triage re-run (8 of 24 issues).** Gemma called #91 "addressed" without citing a repair or commit, so the engine
+downgraded it to `needs_human`. In the first run (`evidence/fn-py-upstream-triage-mastra.json`) the same verdict came
+with valid citations and was kept.
+
+**SerpApi web research on fn.py** (free plan). Three runs while building it exposed Google redirect links, a query that
+returned a dictionary page, schema field names echoed as "documentation", and the original labelled a "fork"; each was
+fixed in the engine. The final run: a cited summary, the original, and the GitHub Pages documentation. The Lead
+Engineer (through Mastra) then answered "where is the documentation?" with that URL, citing the web research.
+
+**Hunter with web search.** Curiosity mode, "python event signal dispatch library": GitHub search alone returned unrelated
+repositories near the top; the web search added `pallets-eco/blinker` and `nitely/python-signals`.
+
+**shaunduncan/smokesignal (second repository).** Baseline: `ModuleNotFoundError: No module named 'mock'`, 0 tests run.
+Fix 1 (`from unittest.mock import MagicMock, ...`) reverted by the engine: `Mock` still used at line 19. Fix 2
+(`from unittest.mock import Mock, call, patch`) approved and committed: 7 passed, 28 failed. Re-diagnosis found two
+Python 3 bound-method issues. Next pass: one Restorer call truncated at the token limit, one fix reverted because the
+failure originated in the edited line, one rejected by the Reviewer. Stage: *restoring*.

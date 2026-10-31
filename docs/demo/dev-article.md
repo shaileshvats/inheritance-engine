@@ -255,6 +255,13 @@ on the page.
 
 ## Limitations, honestly
 
+fn.py isn't the only run. On a second abandoned library, [shaunduncan/smokesignal](https://github.com/shaunduncan/smokesignal)
+(last commit 2016), the tests couldn't start: `No module named 'mock'`. The engine reverted Gemma's first fix because it
+dropped a name line 19 still used, and kept the second (`unittest.mock`): **0 → 7 passing tests**, committed. The
+remaining 28 failures are Python 3 changes to bound methods. Gemma didn't solve them. One patch was reverted because the
+new failure came from its own edit, and the Reviewer rejected another that would have dropped `self`. So that successor
+is also honestly *restoring*.
+
 Verification currently works for Python and Node.js, and only for public GitHub repositories. Docker isn't a perfect
 security boundary. A 4B model still writes wrong patches; the engine catches many, not all, and probes only test what
 the Tester thought to probe. A full run takes 15–25 minutes on a laptop. Inheritance Engine is source-available under
