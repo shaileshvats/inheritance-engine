@@ -7,7 +7,7 @@ tags: devchallenge, hf26challenge, opensource, ai
 *This is a submission for the [Hacktoberfest Open-Source AI Challenge Week 4: Ghost in the Machine](https://dev.to/challenges/hacktoberfest-week4-2026-10-26)*
 
 On the morning of October 31, a model running on my laptop proposed a fix for a Python library last touched in 2014. A
-second model reviewed the fix and called it correct. All 126 tests passed.
+second agent on the same model reviewed the fix and called it correct. All 126 of the project's existing tests passed.
 
 The fix was wrong. What caught it was the library itself: the original author's code, run on the Python it was written
 for, was asked the same questions as the repaired code and gave different answers. The engine reverted the patch.
@@ -29,8 +29,8 @@ agent in it runs on **Gemma 4, on my laptop**.
   with pushing disabled.
 - **Investigate** combines deterministic analysis (import graph, a scan for APIs that modern runtimes removed, a trust
   passport) with a team of agents: Lead Engineer, Historian, Restorer, Reviewer and Tester.
-- **Restore** has the agents patch, review and verify in a locked-down Docker container. Repairs that don't hold up are
-  reverted.
+- **Restore** has the agents patch and review, then runs the tests and behaviour probes in a restricted Docker
+  container. Repairs that don't hold up are reverted.
 - **Preserve** writes an `INHERITANCE.md` into the successor and exports a versioned **Inheritance Record**: who wrote
   the code, what it was for, what changed, and how each change was proven.
 
@@ -47,23 +47,24 @@ the two Sentry screenshots, and the one fast-forwarded wait. [How it was recorde
 The demo inherits [kachayev/fn.py](https://github.com/kachayev/fn.py), "Functional programming in Python" (Apache-2.0,
 about 3.4k stars, last commit on its default branch in October 2014). On Python 3.12 its tests don't even start:
 
-```
+```plaintext
 E   ImportError: cannot import name 'Iterable' from 'collections'
 1 error in 0.07s
 ```
 
 ### The catch, step by step
 
-Gemma restored the imports, and the tests went from "can't start" to **126 passed**. Then I noticed that `@curried`
-behaved differently for functions with `*args`. I reopened the issue with that finding, and on submission day Gemma
-tried again:
+Gemma restored the imports, and the tests went from "can't start" to **126 passed**. That showed the suite could run
+again, not that the library still behaved as its author intended. Then I noticed that `@curried` behaved differently
+for functions with `*args`. I reopened the issue with that finding, and on submission day Gemma tried again:
 
 1. **The original's behaviour.** Python 3.9 is the newest runtime fn.py's own code still works on, so the engine treats
    it as the creator's world and keeps the original commit there as the reference.
 2. **The patch.** The Restorer replaced `getargspec` with `getfullargspec`, then used `f.prflags` to count arguments.
    That attribute doesn't exist.
 3. **The review.** Gemma-as-Reviewer **approved** it: "root cause addressed: yes, regression risk: low".
-4. **The tests.** 126 passed before, 126 passed after. No test calls `curried` on a variadic function.
+4. **The tests.** The project's existing test suite passed all 126 tests before and after the patch. That result was
+   insufficient: none of those tests exercised the variadic `@curried` behaviour.
 5. **The behaviour probe.** The Tester wrote three probes, the first one straight from my reopened note. The engine
    ran them on the original commit under Python 3.9 and on the successor under Python 3.12. Original: `(1, 2)`, then a
    `TypeError`. Successor: `NameError`. Three probes, three changed.
@@ -71,23 +72,26 @@ tried again:
 
    > 126 passed — not marked verified: the inheritor's reopened issue is unresolved
 
-![Replay of the catch: the Reviewer approved, 126 tests passed before and after, and the behaviour probe against the original reverted it](https://raw.githubusercontent.com/shaileshvats/inheritance-engine/main/docs/demo/screenshots/12-replay-probe-catch.jpg)
+![Replay of the catch: the recorded Reviewer approval, 126 existing tests passing before and after, and the behaviour probe against the original that reverted it](https://raw.githubusercontent.com/shaileshvats/inheritance-engine/main/docs/demo/screenshots/12-replay-probe-catch.jpg)
 
 ### Try it yourself, without a model
 
-A model won't write the same wrong patch twice on request, so the engine can **replay** this one. A replay feeds the
-recorded patch, Reviewer verdict and probe code through the engine's *live* checks. The clone, the Docker tests, the
-probes on Python 3.9 and 3.12, the revert and a fresh Inheritance Record all happen on your machine. You need Rust, Git
-and Docker, and no GPU:
+A model won't write the same wrong patch twice on request, so the engine can **replay** this one. A replay does not
+call a model and does not regenerate any of the original model decisions. It reuses the recorded patch, the recorded
+Reviewer verdict and the recorded probe code, then runs the verification and revert pipeline live: the clone, the
+Docker tests before and after the patch, the probes on Python 3.9 and 3.12, the engine's decision, the revert and a
+fresh Inheritance Record all happen on your machine. You need Rust, Git and Docker, and no GPU:
 
 ```bash
 git clone https://github.com/shaileshvats/inheritance-engine && cd inheritance-engine
-cargo run --release      # open http://127.0.0.1:7878 → "Replay a recorded catch" → Run this replay
+cargo run --release
+# then open http://127.0.0.1:7878 → "Replay a recorded catch" → Run this replay
 ```
 
-It takes about 20 seconds once the Docker images are pulled. I've run it four times, including from a fresh clone and
-with the model server unreachable, and it caught the patch every time. The UI labels it as a replay, and recorded
-output is never committed.
+It takes about 20 seconds once the Docker images are pulled. I ran it four times while testing (twice with the model
+server unreachable, once from a fresh clone, once on the engine used for the video), then a fifth time on camera for
+the demo. Every run reproduced the catch: 126 passed before and after, 3 of 3 probes changed, patch reverted. The UI
+labels it as a replay, and a replay never commits its recorded patch.
 
 ### How the engine learned to be suspicious
 
@@ -110,6 +114,9 @@ Every check in that chain exists because a real run needed it:
 
 {% embed https://github.com/shaileshvats/inheritance-engine %}
 
+The platform is source-available under PolyForm Noncommercial 1.0.0, not an OSI-approved open-source license;
+inherited repositories retain their own licenses.
+
 For the full experience you also need a local model server: `lms load google/gemma-4-e4b && lms server start`, then
 `cargo run --release`. The README covers Ollama and the optional companions.
 
@@ -117,8 +124,13 @@ For the full experience you also need a local model server: `lms load google/gem
 
 **The model proposes, the engine verifies.** Gemma 4 E4B runs comfortably on a 16 GB laptop and is genuinely useful:
 in my runs it wrote correct fixes and caught a real bug as Reviewer. It also wrote plausible wrong fixes, cited lines
-that didn't say what it claimed, and approved a patch that invented an attribute. So the trusted part of the system is
-a Rust binary that never executes inherited code and checks everything the model says:
+that didn't say what it claimed, and approved a patch that invented an attribute. So the model is never the trusted
+part of the system.
+
+The trusted host-side Rust engine never executes inherited code directly. In Docker mode (the recommended default),
+untrusted project code runs only inside the isolated Docker sandbox, where tests and behavioural probes execute under explicit
+restrictions. (You can explicitly choose a native mode with little isolation, or no execution at all.) The engine
+checks everything the model says:
 
 - Every citation is **re-read from disk**. In the recorded investigation, 21 of 22 citations checked out and 1 was
   flagged as a mismatch. A claim the model calls "verified" without a real citation is downgraded to "inferred".
@@ -130,8 +142,9 @@ a Rust binary that never executes inherited code and checks everything the model
 
 **The stack:** Gemma 4 E4B through LM Studio's OpenAI-compatible API with `json_schema` constrained decoding for every
 agent role (Ollama works too); a single Rust binary (axum, SQLite, tokio) that spawns `git` and `docker` with argument
-vectors and no shell; a Docker sandbox with `--network none`, a read-only root filesystem, all capabilities dropped and
-resource limits; checkpointed jobs that survive a restart; and a vanilla JS UI with no build step. **61 Rust tests**
+vectors and no shell; a Docker sandbox where every container gets a read-only root filesystem, all capabilities
+dropped, `no-new-privileges` and memory, CPU and process limits, and tests and probes also run with `--network none`
+as a non-root user (dependency installation is the one networked step); checkpointed jobs that survive a restart; and a vanilla JS UI with no build step. **61 Rust tests**
 cover the safety rules (path traversal, push disabled, original untouched, fabricated citations, the revert rules,
 telemetry scrubbing, web citation checks), plus 19 for the Mastra companion.
 
@@ -249,7 +262,11 @@ and the evidence for each one, including the changes that were *rejected*. This 
       "id": "rep_3c4ccc574d204f3f",
       "status": "reverted",
       "review": { "verdict": "approve", "regression_risk": "low" },
-      "probe": { "verdict": "changed", "legacy_image": "python:3.9-slim", "modern_image": "python:3.12-slim" }
+      "probe": {
+        "verdict": "changed",
+        "legacy_image": "python:3.9-slim",
+        "modern_image": "python:3.12-slim"
+      }
     }]
   }
 }
@@ -275,8 +292,10 @@ people who made it stay on the page.
   relevant. For smokesignal, the "documentation" Gemma found was about Python's `signal` module.
 - **Probes only test what the Tester thought to probe**, and a 4B model writes wrong patches. The engine catches many,
   not all. A full run takes 15–25 minutes on a laptop.
-- Verification works for Python and Node.js, and only for public GitHub repositories. Docker isn't a perfect security
-  boundary. Replays exist for one recorded case so far.
+- Verification works for Python and Node.js, and only for public GitHub repositories. Replays exist for one recorded
+  case so far.
+- **Docker isn't a perfect security boundary.** The sandbox reduces risk; it doesn't remove it. Dependency installation
+  has network access, and native mode, if you choose it, has little isolation.
 - Inheritance Engine is source-available under the PolyForm Noncommercial License 1.0.0, which is *not* an OSI
   open-source license. Inherited projects keep their own licenses, and the engine never relicenses anything.
 
@@ -285,14 +304,9 @@ and the runtime agents are Gemma.
 
 ## Prize Categories
 
-- **Best Use of Gemma**: Gemma 4 runs every agent role (Lead, Historian, Restorer, Reviewer, Tester, Hunter), locally,
-  with constrained JSON output.
-- **Best Use of Mastra**: the Lead Engineer agent with engine tools, a grounded answer workflow, and the upstream-issue
-  triage workflow, all over Gemma, all used by the product.
-- **Best Use of Sentry Agent Tracing**: real traces from both the Rust engine and the Mastra companion in Sentry's AI
-  Agents views, with tokens and latency per call, verified to carry no prompts or code.
-- **Best Use of SerpApi**: live web search in the Hunter to discover repositories GitHub's search misses, and a web
-  research job that gives the agents cited, engine-checked sources about an inherited project.
+This entry uses Gemma (every agent role, locally), Mastra (the Lead Engineer chat and upstream-issue triage), Sentry
+Agent Tracing (engine and companion traces without prompts or code) and SerpApi (Hunter web discovery and cited web
+research). Each is described above.
 
 ---
 
