@@ -17,6 +17,8 @@ A small TypeScript service built with [Mastra](https://mastra.ai) (`@mastra/core
 
 ## Run
 
+Requires Node.js 22.18 or newer (the server runs TypeScript directly with Node's built-in type stripping).
+
 ```bash
 npm ci --ignore-scripts
 npm run serve        # narrow loopback API on 127.0.0.1:7880, used by the engine (IE_MASTRA_URL)

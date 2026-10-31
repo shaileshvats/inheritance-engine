@@ -98,7 +98,7 @@ impl Config {
             Some("cloud_first") => PrivacyMode::CloudFirst,
             Some(other) => anyhow::bail!("unknown IE_PRIVACY_MODE '{other}'"),
         };
-        let model_overrides = ["LEAD", "HISTORIAN", "RESTORER", "REVIEWER", "HUNTER"]
+        let model_overrides = ["LEAD", "HISTORIAN", "RESTORER", "REVIEWER", "TESTER", "HUNTER"]
             .iter()
             .filter_map(|role| var(&format!("IE_MODEL_{role}")).map(|m| (role.to_lowercase(), m)))
             .collect();

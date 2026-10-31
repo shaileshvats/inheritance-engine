@@ -7,12 +7,17 @@ touches the filesystem, processes, Git and Docker. Splitting a hackathon MVP acr
 would have added risk without adding capability. So a single Rust binary is both the API server and the "companion",
 and it exposes a narrow HTTP API on loopback, not a shell.
 
-## D2 — No agent framework (Mastra not used)
+## D2 — No agent framework in the core (updated 2026-10-28: Mastra companion added)
 
 Mastra is a TypeScript framework, so using it would have meant introducing Node.js only for orchestration. The agent
 team needs four things, and Rust covers them directly: constrained JSON calls, traced parent/child calls, scoped
 context, and engine-side validation. Using Mastra purely to qualify for its prize category would violate the PRD's
 "genuine use" rule. The Mastra category is therefore **not claimed**.
+
+**Update (2026-10-28).** The core pipeline stayed in Rust, for the reasons above. Two jobs fitted Mastra genuinely, so
+they moved into an optional companion (`companion/mastra`): the Lead Engineer chat as a Mastra agent with read-only
+engine tools, and the `triage-upstream-issues` workflow. Both are used by the product and run on the same local Gemma
+model, and the engine still checks their output. The Mastra category is now claimed on that basis.
 
 ## D3 — SQLite checkpoints instead of Temporal
 
@@ -54,8 +59,21 @@ Each of these was added after a real run went wrong, not in anticipation:
    variadic functions. The inheritor can now reopen an issue with their finding. An unresolved reopened issue blocks
    the *verified* stage, and Tester probes must cover distinct input shapes.
 8. **Reviewer rejections get one informed retry**, carrying the reviewer's concrete concerns.
+9. **Memory addresses are not behaviour** (2026-10-31). Probe output such as `<function f at 0xffff81c39280>` differs on
+   every run, so addresses are normalised before comparing.
+
+## D8 — Replays of recorded model output (2026-10-31)
+
+The most important behaviour of the engine (an approved, test-passing patch caught by a behaviour probe) depends on what
+a model happens to write, so it cannot be reproduced on demand, and judges may not have a local model. A replay feeds a
+recorded patch, review and probe code through the live checks instead. The alternatives were a screen recording (not
+reproducible) or a canned result (not honest). Replays never commit recorded output and are labelled in the UI.
 
 ## D7 — Prize categories
 
 Only Gemma is used in the product. The other partner technologies were evaluated against the PRD's rule ("genuine use
 only, no spending without approval"), and none were integrated in this build. Claiming them would be false.
+
+**Update (2026-10-31).** Mastra, Sentry Agent Tracing and SerpApi were later integrated for real and are claimed; see
+[`docs/partners`](../partners/README.md) for the evidence. DigitalOcean and .tech were not pursued because the project
+has a zero budget.

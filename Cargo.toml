@@ -2,6 +2,7 @@
 name = "inheritance-engine"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.89"
 description = "Find forgotten software. Understand it. Restore it. Give it a future."
 license-file = "LICENSE"
 publish = false

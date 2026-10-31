@@ -41,9 +41,40 @@ Small local models are useful and fallible. Rather than hoping the model is righ
 Every one of these rules exists because a real run against a real repository needed it. See
 [`docs/demo/README.md`](docs/demo/README.md).
 
+## See it work in a few minutes, without a model
+
+The quickest way to see the engine's central idea is a **replay**. On 2026-10-31, Gemma proposed a fix for fn.py that the
+Reviewer agent approved and that kept all 126 tests passing, but that broke behaviour the tests never exercised. The
+behaviour probe caught it. A replay feeds that recorded patch, review and probe code back through the engine's **live**
+checks, so you can watch the catch happen on your own machine:
+
+```bash
+cargo run --release        # then open http://127.0.0.1:7878 → "Replay a recorded catch" → Run this replay
+```
+
+Or from a second terminal:
+
+```bash
+curl -s -X POST http://127.0.0.1:7878/api/replays -H 'Content-Type: application/json' -d '{}'
+```
+
+What is recorded and what is live:
+
+| Recorded model output (Gemma 4 E4B, 2026-10-31) | Done live by your run |
+| --- | --- |
+| The Restorer's patch (`f.prflags`) and rationale | Clone of kachayev/fn.py at its 2014 commit, kept read-only |
+| The Reviewer's verdict: approve, regression risk low | Inventory and decay scan that picks the era runtime (Python 3.9) |
+| The Tester's three probe snippets | Tests in Docker before and after the patch (126 → 126 passed) |
+| | Probes on the original under Python 3.9 and on the successor under 3.12 |
+| | The engine's decision (reverted) and a new Inheritance Record |
+
+It needs Rust, Git, Docker, and network access to GitHub and the Python package index. No model or GPU is needed.
+With the Docker images already pulled it takes about 20 seconds; the first run also pulls `python:3.12-slim` and
+`python:3.9-slim`. Replays are labelled as replays in the UI and never commit recorded output.
+
 ## Quick start (macOS, Linux)
 
-Requirements: Rust 1.80+, Git, Docker (Desktop or Engine), and a local model server: [LM Studio](https://lmstudio.ai)
+Requirements: Rust 1.89+, Git, Docker (Desktop or Engine), and a local model server: [LM Studio](https://lmstudio.ai)
 or [Ollama](https://ollama.com).
 
 ```bash
@@ -110,7 +141,7 @@ web/             vanilla ES modules, no build step, no external requests
 
 ## Optional integrations
 
-All three are optional. The core journey runs without them.
+All of these are optional. The core journey runs without them.
 
 **Mastra companion** ([`companion/mastra`](companion/mastra/README.md)). This TypeScript service, built on
 [Mastra](https://mastra.ai), runs the Lead Engineer chat as a Mastra agent with engine tools, plus a
@@ -119,7 +150,7 @@ successor changed. Both run on the same local Gemma model. The engine keeps the 
 "addressed" survives only if it cites a repair or commit that exists.
 
 ```bash
-cd companion/mastra && npm ci --ignore-scripts && npm run serve
+cd companion/mastra && npm ci --ignore-scripts && npm run serve     # Node.js 22.18+
 IE_MASTRA_URL=http://127.0.0.1:7880 cargo run --release
 ```
 
@@ -139,13 +170,26 @@ Only search text and public repository names are sent.
 Ollama with Gemma 4, Docker sandboxes) for a dedicated Linux host, reachable only through SSH. Its images were built
 and run locally; it has not been deployed to any cloud provider.
 
+## What runs offline, and what needs the internet
+
+| Works offline (once the repository and its dependencies are cached) | Needs the internet |
+| --- | --- |
+| Every Gemma agent: Hunter explanations, Historian, Restorer, Reviewer, Tester, Lead Engineer | Cloning the original from GitHub, and Hunter's GitHub search |
+| Investigation, decay scan, trust passport, citation checks | Installing the inherited project's dependencies (the only networked sandbox step) |
+| Repairs, Docker tests (network off), behaviour probes, revert rules | Pulling Docker images the first time |
+| `INHERITANCE.md` and the Inheritance Record | Mastra upstream-issue triage (reads GitHub issues) |
+| The Mastra Lead Engineer chat (local model) | SerpApi web search and Sentry tracing, both optional |
+
+Repository content never leaves the machine: SerpApi receives search text and public repository names, and Sentry
+receives metadata only.
+
 ## Tests
 
 ```bash
 cargo test
 ```
 
-The engine has 57 Rust tests and the Mastra companion has 19 vitest tests (`cd companion/mastra && npm test`). They cover path traversal and symlink escapes, atomic edits, locked-down Docker
+The engine has 59 Rust tests and the Mastra companion has 19 vitest tests (`cd companion/mastra && npm test`). They cover path traversal and symlink escapes, atomic edits, locked-down Docker
 arguments, the cleared native environment, push being disabled and the original staying untouched, privacy policy
 enforcement, secret redaction, fabricated-citation detection, the regression and improvement rules, dangling-import
 detection, traceback parsing, test-summary parsing, and era-runtime selection. End-to-end runs against real repositories
@@ -157,8 +201,9 @@ are documented with their actual results in [`docs/demo`](docs/demo/README.md).
   adapters also speak Ollama natively, and any OpenAI-compatible server works. Development smoke tests also used Qwen3 4B
   through Ollama.
 - **Per-agent models:** for example `IE_MODEL_REVIEWER=google/gemma-4-12b-qat` for a stronger independent reviewer.
-- **No agent framework:** the orchestration is about 2,000 lines of Rust in this repository. Mastra and Temporal were considered
-  and not used; see [`docs/decisions`](docs/decisions/README.md).
+- **Orchestration:** the core pipeline is plain Rust in this repository. The optional Mastra companion runs the Lead
+  Engineer agent and the upstream-issue triage workflow. Temporal was considered and not used; see
+  [`docs/decisions`](docs/decisions/README.md).
 
 ## What it can't do yet
 
