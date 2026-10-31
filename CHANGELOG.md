@@ -9,6 +9,8 @@
   inject source and secrets to prove nothing leaks. Token usage recorded for every model call.
 - Self-host Docker Compose stack (`deploy/self-host`: compose, Dockerfiles, cloud-init), images built and run locally;
   never deployed to a cloud provider (zero budget).
+- SerpApi web search (optional, free plan): Hunter "Also search the web" with GitHub re-verification, and a
+  `research` job whose Gemma summary must cite real results (engine-checked); fed to the Lead and the Mastra agent.
 - Human-in-the-loop reopen of issues; reviewer rejections get one informed retry; humans outrank green tests.
 
 ## 0.1.0 — 2026-10-28 (Hacktoberfest Week 4 build)

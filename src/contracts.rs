@@ -87,6 +87,16 @@ pub struct Candidate {
     pub age_years: Option<f64>,
     pub idle_years: Option<f64>,
     pub signals: Vec<Signal>,
+    /// Set when web search (SerpApi) found this repository: the page that pointed to it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub web_source: Option<WebSource>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WebSource {
+    pub title: String,
+    pub url: String,
+    pub query: String,
 }
 
 // ---------- Inventory ----------

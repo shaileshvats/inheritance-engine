@@ -25,9 +25,10 @@ const enc = encodeURIComponent;
 export const api = {
   status: () => request('GET', '/api/status'),
 
-  hunt: (q, mode, lang) => {
+  hunt: (q, mode, lang, web) => {
     const p = new URLSearchParams({ q, mode });
     if (lang) p.set('lang', lang);
+    if (web) p.set('web', 'true');
     return request('GET', `/api/hunt?${p}`);
   },
   explain: (fullName) => request('POST', '/api/hunt/explain', { full_name: fullName }),
@@ -42,6 +43,7 @@ export const api = {
   setExecutionMode: (id, mode) => request('POST', `/api/inheritances/${enc(id)}/execution-mode`, { mode }),
   renameSuccessor: (id, name) => request('PATCH', `/api/inheritances/${enc(id)}/successor`, { name }),
 
+  research: (id) => request('POST', `/api/inheritances/${enc(id)}/research`, {}),
   triage: (id, maxIssues) => request('POST', `/api/inheritances/${enc(id)}/triage`, maxIssues ? { max_issues: maxIssues } : {}),
   reopenIssue: (id, issueId, note) => request('POST', `/api/inheritances/${enc(id)}/issues/${enc(issueId)}/reopen`, { note }),
 

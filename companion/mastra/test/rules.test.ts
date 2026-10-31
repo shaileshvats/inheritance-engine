@@ -112,6 +112,9 @@ describe('context shaping', () => {
     expect(summarizeDetail(d).upstream_issues).toBeNull();
     const withTriage = { ...d, upstream_triage: { total_open_upstream: 24, counts: { addressed_by_successor: 1 }, triaged: [{ number: 91, title: 'Iterable', verdict: 'addressed_by_successor', cited_repairs: ['rep_1'], cited_commits: [] }] } };
     expect(summarizeDetail(withTriage).upstream_issues?.triaged[0]).toEqual({ number: 91, title: 'Iterable', verdict: 'addressed_by_successor', cites: ['rep_1'] });
+    expect(summarizeDetail(d).web_research).toBeNull();
+    const withWeb = { ...d, web_research: { summary: 's', related: [{ name: 'o/r', relation: 'original', note: 'n', url: 'https://github.com/o/r', cites: ['W1'] }], documentation: [{ title: 'Docs', url: 'https://o.github.io/r/', cites: ['W2'] }] } };
+    expect(summarizeDetail(withWeb).web_research).toEqual({ summary: 's', related: [{ name: 'o/r', relation: 'original', url: 'https://github.com/o/r' }], documentation: [{ title: 'Docs', url: 'https://o.github.io/r/' }] });
   });
 });
 

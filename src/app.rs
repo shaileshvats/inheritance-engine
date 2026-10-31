@@ -26,6 +26,8 @@ pub struct App {
     pub agents: Arc<Agents>,
     pub gh: GitHub,
     pub mastra: Option<crate::mastra::MastraClient>,
+    /// Optional live web search (SerpApi); inactive until `SERPAPI_API_KEY` is set.
+    pub web: crate::websearch::WebSearch,
     controls: Mutex<HashMap<String, Arc<AtomicU8>>>,
 }
 
@@ -41,8 +43,8 @@ impl std::fmt::Display for Cancelled {
 impl std::error::Error for Cancelled {}
 
 impl App {
-    pub fn new(cfg: Arc<Config>, db: Arc<Db>, agents: Arc<Agents>, gh: GitHub, mastra: Option<crate::mastra::MastraClient>) -> Arc<Self> {
-        Arc::new(Self { cfg, db, agents, gh, mastra, controls: Mutex::new(HashMap::new()) })
+    pub fn new(cfg: Arc<Config>, db: Arc<Db>, agents: Arc<Agents>, gh: GitHub, mastra: Option<crate::mastra::MastraClient>, web: crate::websearch::WebSearch) -> Arc<Self> {
+        Arc::new(Self { cfg, db, agents, gh, mastra, web, controls: Mutex::new(HashMap::new()) })
     }
 
     pub fn layout(&self, inheritance_id: &str) -> Layout {
@@ -100,6 +102,7 @@ impl App {
             "restore" => vec!["plan"],
             "verify" => vec!["verify"],
             "triage" => vec!["mastra: triage upstream issues"],
+            "research" => vec![crate::pipeline::RESEARCH_STEP],
             _ => anyhow::bail!("unknown job kind {kind}"),
         };
         let t = now();
@@ -137,6 +140,7 @@ impl App {
                 "restore" => crate::pipeline::restore(&mut ctx).await,
                 "verify" => crate::pipeline::verify_job(&mut ctx).await,
                 "triage" => crate::pipeline::triage_job(&mut ctx).await,
+                "research" => crate::pipeline::research_job(&mut ctx).await,
                 _ => Err(anyhow::anyhow!("unknown job kind")),
             };
             match result {

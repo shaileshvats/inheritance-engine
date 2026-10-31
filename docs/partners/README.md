@@ -17,7 +17,7 @@ Deadline: 2026-10-31 23:59 PDT. A submission can win only once, and writing qual
 | DigitalOcean (featured) | **Not pursued**: zero budget, and no DigitalOcean credits were offered | No. A Droplet would be paid; nothing was created |
 | Temporal | Not implemented; SQLite checkpoints do the same job today | Possible but high risk: about 1.5 days, second runtime |
 | Auth0 for AI Agents | Not implemented, real fit (GitHub actions on the user's behalf, with approval) | Risky: 1–2 days plus Auth0 tenant and GitHub connection setup |
-| SerpApi | Not implemented | Free plan exists (250 searches/month, sign-up shows no payment step); needs the owner's sign-up |
+| SerpApi | **Implemented and demonstrated**: Hunter web discovery + cited web research for the agents, on the free plan | Done |
 | Ultramarine (Paper Instruments) | Not implemented; it is a hosted model behind an OpenAI-compatible adapter | Yes, a few hours. Conflicts with the local-only default; opt-in comparison only |
 | Backboard | Not implemented, weak fit | Possible, low value |
 | MongoDB Atlas / Tiger Data | Not implemented; no real need yet | Possible (restoration-recipe retrieval), questionable value with so few runs |
@@ -58,7 +58,7 @@ Deadline: 2026-10-31 23:59 PDT. A submission can win only once, and writing qual
   upstream issues, 8 triaged. #91 "ImportError: cannot import name Iterable from collections" is *addressed*, citing
   repair `rep_84e85726…` and commit `ed0b4e499d`, both verified by the engine. 7 are still relevant. The same result
   came from the UI-started job. See also screenshot `05-mastra-upstream-triage.jpg` and the agent trace entries with
-  provider `mastra`. There are 17 vitest tests (citation rule, telemetry scrubbing, request guards, both workflows
+  provider `mastra`. There are 19 vitest tests (citation rule, telemetry scrubbing, request guards, both workflows
   against a local fixture model, the HTTP server).
 - **Limits:** native tool calling has not been exercised with Gemma 4 on this machine (runtime limitation above).
   Mastra storage is in memory, since the engine persists results. A 4B model sometimes repeats a heading.
@@ -121,14 +121,33 @@ Deadline: 2026-10-31 23:59 PDT. A submission can win only once, and writing qual
 - **Work:** Auth0 tenant, GitHub connection with Token Vault, local login callback, approval UI, and a new outward-facing
   action that needs careful security review. 1–2 days.
 
-### SerpApi — free plan available, not implemented
-- **Requirement:** live web search for an agent, RAG grounding, or tracking news for an open-source project.
-- **Cost check 2026-10-31:** the pricing page lists a Free plan at $0 with 250 searches/month and 50/hour. Sign-up is
-  through GitHub or Google and shows no payment step. Paid plans start at $25/month and are not needed.
-- **Possible use:** web discovery in the Hunter (repositories mentioned on pages about the user's problem), plus a
-  research job that finds forks, successors and documentation and gives them to the agents as cited, engine-checked
-  context.
-- **Status:** not built. It needs the owner to create a free account and add `SERPAPI_API_KEY` to the local `.env`.
+### SerpApi — Implemented and demonstrated (free plan)
+- **Requirement:** "Give an agent live web search, ground a RAG app in fresh results, or track news for an open-source project."
+- **Cost:** the owner's account is on SerpApi's Free Plan ($0, 250 searches/month; the dashboard shows "Free Plan").
+  No payment method. Development and the demo used a few dozen searches.
+- **In the product** (`src/websearch.rs`, `hunter.rs`, `pipeline.rs::research_job`, Overview card):
+  - **Hunter:** *Also search the web (SerpApi)*. The same keywords go to Google through SerpApi; GitHub repository URLs
+    in the results are re-fetched from the GitHub API (real signals), inserted first, and show the page they came from.
+    Other pages are listed as related reading.
+  - **Web research job** on an inheritance: three searches (`"owner/repo"`, name + topic, name + owner + documentation),
+    then one Gemma call (Historian) summarises related projects and documentation. Every item must cite result ids
+    (`W1`…); the engine drops uncited or invalid citations and duplicates, and relabels the inherited repository as
+    `original` when the model calls it something else. The result is stored, shown, included in the Inheritance Record,
+    and given to the Lead Engineer (engine chat and the Mastra `get-project-overview` tool).
+  - **Privacy:** only search text and public repository names are sent. The key is read from `.env` at call time, kept
+    out of error messages (`reqwest::Error::without_url`) and never logged. Redirect links that hide their destination
+    are discarded.
+- **Evidence (2026-10-31):**
+  - Hunter, curiosity mode, *"python event signal dispatch library"*: GitHub search alone returned unrelated
+    repositories near the top. Web search added `pallets-eco/blinker` and `nitely/python-signals`
+    (`docs/demo/screenshots/09-hunter-web-search.jpg`).
+  - Web research on kachayev/fn.py: a cited summary, the original and its GitHub Pages documentation
+    (`10-web-research.jpg`). Real runs exposed problems that were then fixed: Google redirect links, a query that
+    returned a dictionary page, the model echoing schema field names as "documentation" entries, and the model calling
+    the original a fork.
+  - Tests: link classification, reserved GitHub paths, redirect filtering, `.env` key parsing, and the citation check.
+- **Limits:** search engines rarely surface forks of old projects. GitHub's own fork data would be better and is not
+  used yet. Result quality for 10-year-old projects is thin.
 
 ### Ultramarine (Paper Instruments) — feasible, opt-in only
 - **Requirement:** put Ultramarine to work on something real via the OpenAI/Anthropic SDK, and report what the run cost.

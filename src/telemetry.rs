@@ -123,7 +123,7 @@ pub fn purpose_kind(purpose: &str) -> &'static str {
         ("Initial inspection", "plan"), ("Reconstruct", "historian"), ("Diagnose", "diagnose"), ("Re-diagnose", "rediagnose"),
         ("Challenge", "challenge"), ("Synthesize", "synthesis"), ("Patch", "patch"), ("Review repair", "review"),
         ("Behaviour probes", "probe"), ("Answer the user", "chat"), ("Translate problem", "hunt"), ("Explain why", "explain"),
-        ("Triage", "triage"),
+        ("Triage", "triage"), ("Research", "research"),
     ];
     KINDS.iter().find(|(p, _)| purpose.starts_with(p)).map(|(_, k)| *k).unwrap_or("other")
 }

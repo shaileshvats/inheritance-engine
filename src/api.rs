@@ -91,6 +91,7 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/inheritances/{id}/calls", get(list_calls))
         .route("/inheritances/{id}/issues/{issue_id}/reopen", post(reopen_issue))
         .route("/inheritances/{id}/triage", post(triage))
+        .route("/inheritances/{id}/research", post(research))
         .route("/calls/{id}", get(get_call))
         .route("/jobs/{id}/{action}", post(job_action))
         .fallback(|| async { ApiError(StatusCode::NOT_FOUND, "no such API route".into()) });
@@ -142,6 +143,7 @@ async fn status(State(app): State<Arc<App>>) -> R<Value> {
         "sentry": crate::telemetry::status(),
         "privacy_mode": app.cfg.privacy_mode,
         "github_token": app.cfg.github_token.is_some(),
+        "web_search": {"provider": "serpapi", "enabled": crate::websearch::WebSearch::enabled()},
         "data_dir": app.cfg.data_dir.display().to_string(),
     })))
 }
@@ -153,14 +155,17 @@ struct HuntQ {
     q: String,
     mode: Option<String>,
     lang: Option<String>,
+    /// Also search the web (SerpApi) when a key is configured.
+    web: Option<bool>,
 }
 
 async fn hunt(State(app): State<Arc<App>>, Query(q): Query<HuntQ>) -> R<Value> {
     let mode = q.mode.as_deref().unwrap_or("problem");
     let mode = if mode == "curiosity" { "curiosity" } else { "problem" };
     let lang = q.lang.as_deref().map(str::trim).filter(|l| !l.is_empty());
-    let r = hunter::hunt(&app.gh, &app.agents, &truncate(&q.q, 500), mode, lang).await?;
-    Ok(Json(json!({"mode": mode, "query_used": r.query_used, "ai_query": r.ai, "total_count": r.total, "results": r.results})))
+    let web = (q.web == Some(true) && crate::websearch::WebSearch::enabled()).then_some(&app.web);
+    let r = hunter::hunt(&app.gh, &app.agents, web, &truncate(&q.q, 500), mode, lang).await?;
+    Ok(Json(json!({"mode": mode, "query_used": r.query_used, "ai_query": r.ai, "total_count": r.total, "results": r.results, "web": r.web})))
 }
 
 #[derive(Deserialize)]
@@ -262,6 +267,7 @@ async fn detail(State(app): State<Arc<App>>, Path(id): Path<String>) -> R<Value>
     o.insert("lineage".into(), json!(record::lineage(&app, &id)));
     o.insert("verify_plan".into(), json!(app.db.get_artifact::<Value>(&id, "verify_plan")?));
     o.insert("upstream_triage".into(), json!(app.db.get_artifact::<Value>(&id, "upstream_triage")?));
+    o.insert("web_research".into(), json!(app.db.get_artifact::<Value>(&id, "web_research")?));
     Ok(Json(v))
 }
 
@@ -487,6 +493,9 @@ async fn post_chat(State(app): State<Arc<App>>, Path(id): Path<String>, Json(b):
     if let Some(j) = &active {
         ctxt.push_str(&format!("A {} job is currently {} (step: {}).\n", j.kind, j.status, j.step.clone().unwrap_or_default()));
     }
+    if let Some(w) = pipeline::web_research_brief(&app, &id) {
+        ctxt.push_str(&w);
+    }
     let convo: Vec<String> = history.iter().rev().take(8).rev().map(|m| format!("{}: {}", m.role, truncate(&m.content, 800))).collect();
     let task = format!(
         "Answer the user's latest message as the Lead Engineer, using only the team's recorded findings below. Be direct and honest about uncertainty; never claim tests pass unless the latest verification passed. If an action would help, suggest exactly one (investigate, restore_essential, restore_all, verify) — the user will decide; otherwise 'none'. Cite issue/claim ids you rely on.\n\n{}\nConversation so far:\n{}\n\nUser's latest message: {}",
@@ -540,6 +549,16 @@ async fn reopen_issue(State(app): State<Arc<App>>, Path((id, issue_id)): Path<(S
 struct TriageBody {
     #[serde(default)]
     max_issues: Option<u32>,
+}
+
+/// Search the web (SerpApi) for the inherited project's forks, successors and documentation; Gemma summarises with
+/// citations the engine checks.
+async fn research(State(app): State<Arc<App>>, Path(id): Path<String>) -> R<Job> {
+    app.row(&id)?;
+    if !crate::websearch::WebSearch::enabled() {
+        return Err(bad("web search is off: add SERPAPI_API_KEY to .env (SerpApi's free plan works)"));
+    }
+    Ok(Json(app.start_job(&id, "research", json!({}))?))
 }
 
 /// Triage the original repository's open GitHub issues against the successor, via the Mastra workflow.

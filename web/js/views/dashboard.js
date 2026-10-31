@@ -49,6 +49,10 @@ export class DashboardView {
     const input = h('input', { type: 'search', id: 'hunt-q', class: 'input input-lg', autocomplete: 'off', required: true, placeholder: '' });
     const lang = h('input', { type: 'text', id: 'hunt-lang', class: 'input', placeholder: 'Any', autocomplete: 'off', size: 10 });
     const examples = h('div', { class: 'examples', 'aria-label': 'Example searches' });
+    // Web search (SerpApi) is offered only when the engine has a key; the checkbox appears once status says so.
+    const web = h('input', { type: 'checkbox', id: 'hunt-web' });
+    const webField = h('label', { class: 'small web-field', hidden: true }, web, ' Also search the web (SerpApi)');
+    api.status().then((st) => { if (st.web_search && st.web_search.enabled) webField.hidden = false; }).catch(() => {});
     const hint = h('p', { class: 'small muted', id: 'hunt-hint' });
 
     const setPlaceholder = () => {
@@ -86,21 +90,21 @@ export class DashboardView {
         input,
         h('label', { class: 'lang-field' }, h('span', { class: 'small muted' }, 'Language'), lang),
         submit),
-      h('div', { class: 'hunt-meta' }, seg, examples),
+      h('div', { class: 'hunt-meta' }, seg, examples, webField),
       hint);
-    form.addEventListener('submit', (e) => { e.preventDefault(); this.search(input.value.trim(), lang.value.trim(), submit); });
+    form.addEventListener('submit', (e) => { e.preventDefault(); this.search(input.value.trim(), lang.value.trim(), submit, !webField.hidden && web.checked); });
     setPlaceholder();
     return form;
   }
 
-  async search(q, lang, submit) {
+  async search(q, lang, submit, web) {
     if (!q) return;
     submit.disabled = true;
     this.resultsEl.setAttribute('aria-busy', 'true');
     replace(this.resultsEl, h('div', { class: 'loading-row' }, spinner('Searching'),
-      this.mode === 'problem' ? ' Asking Gemma for a search query, then searching GitHub…' : ' Searching GitHub…'));
+      (this.mode === 'problem' ? ' Asking Gemma for a search query, then searching GitHub' : ' Searching GitHub') + (web ? ' and the web…' : '…')));
     try {
-      const res = await api.hunt(q, this.mode, lang);
+      const res = await api.hunt(q, this.mode, lang, web);
       this.renderResults(res);
       announce(`${res.results.length} repositories found`);
     } catch (e) {
@@ -122,7 +126,8 @@ export class DashboardView {
           h('span', { class: 'agent-tag' }, 'Hunter · Gemma'),
           ' wrote this query',
           res.ai_query.reasoning ? `: ${res.ai_query.reasoning}` : '.')
-        : null);
+        : null,
+      res.web && res.web.used ? webNote(res.web) : null);
     if (!res.results.length) {
       replace(this.resultsEl, head, emptyState('No repositories matched.', 'Try broader words, drop the language filter, or switch discovery mode.'));
       return;
@@ -153,6 +158,8 @@ export class DashboardView {
             h('a', { href: c.html_url, target: '_blank', rel: 'noopener noreferrer' }, c.full_name)),
           h('p', { class: 'candidate-desc' }, c.description || h('span', { class: 'muted' }, 'No description.'))),
         c.archived ? pill('cancelled', 'Archived') : null),
+      c.web_source ? h('p', { class: 'small muted' }, 'Found on the web: ',
+        h('a', { href: c.web_source.url, target: '_blank', rel: 'noopener noreferrer' }, c.web_source.title || c.web_source.url)) : null,
       h('dl', { class: 'facts' },
         fact('Language', c.language || '—'),
         fact('Stars', fmtNum(c.stars)),
@@ -246,4 +253,14 @@ function inheritanceCard(i) {
       `${fmtNum(i.counts?.findings ?? 0)} findings · ${fmtNum(i.counts?.issues ?? 0)} issues · ${fmtNum(i.counts?.repairs ?? 0)} repairs`,
       h('span', { class: 'spacer' }),
       `updated ${relTime(i.updated_at)}`));
+}
+
+/** What the web search did, and the non-repository pages it found, each linked to its source. */
+function webNote(w) {
+  if (w.error) return h('p', { class: 'small muted' }, 'Web search failed: ', w.error);
+  return h('details', { class: 'small web-note' },
+    h('summary', null, `Web search (SerpApi) · query `, h('code', null, w.query), ` · ${fmtNum(w.results_seen)} results · ${fmtNum(w.repositories_added)} repositories added`),
+    (w.pages || []).length ? h('ul', null, w.pages.map((p) => h('li', null,
+      h('a', { href: p.url, target: '_blank', rel: 'noopener noreferrer' }, p.title || p.url), ' ',
+      h('span', { class: 'muted' }, p.source || ''), p.snippet ? h('div', { class: 'muted' }, p.snippet) : null))) : h('p', { class: 'muted' }, 'No other pages.'));
 }

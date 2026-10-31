@@ -1466,6 +1466,125 @@ pub async fn verify_job(ctx: &mut JobCtx) -> anyhow::Result<()> {
     Ok(())
 }
 
+// ---------- web research (SerpApi + Gemma, engine-checked citations) ----------
+
+pub const RESEARCH_STEP: &str = "web research: related projects and documentation";
+
+fn research_queries(row: &InheritanceRow) -> Vec<String> {
+    let topic = crate::hunter::sanitize_keywords(row.github.description.as_deref().unwrap_or(""));
+    let topic: String = topic.split_whitespace().take(4).collect::<Vec<_>>().join(" ");
+    vec![
+        format!("\"{}\"", row.full_name),
+        format!("{} {}", row.name, topic).trim().to_string(),
+        format!("{} {} documentation", row.name, row.github.owner),
+    ]
+}
+
+/// Keeps only items that cite results which really exist, drops invalid ids, attaches a source URL (a documentation
+/// page when one is cited, for documentation items), and drops items that repeat an earlier item's source.
+pub fn check_research(v: &Value, results: &[crate::websearch::WebResult], own_repo: &str) -> Value {
+    let url_of = |cid: &str| results.iter().find(|r| r.id == cid).map(|r| r.url.clone());
+    let docs_url = |cites: &[String]| cites.iter().find_map(|c| results.iter().find(|r| &r.id == c && r.kind == "docs")).map(|r| r.url.clone());
+    let valid = |a: &Value| -> Vec<String> { a.as_array().map(|a| a.as_slice()).unwrap_or_default().iter().filter_map(|c| c.as_str()).map(|c| c.trim().trim_matches(|ch| ch == '[' || ch == ']').to_string()).filter(|c| url_of(c).is_some()).collect() };
+    let mut dropped = 0;
+    let mut keep = |items: &Value, docs: bool| -> Vec<Value> {
+        let mut seen = BTreeSet::new();
+        items.as_array().map(|a| a.as_slice()).unwrap_or_default().iter().filter_map(|it| {
+            let cites = valid(&it["cites"]);
+            if cites.is_empty() {
+                dropped += 1;
+                return None;
+            }
+            let url = if docs { docs_url(&cites).or_else(|| url_of(&cites[0])) } else { url_of(&cites[0]) };
+            if !seen.insert(url.clone()) {
+                dropped += 1;
+                return None;
+            }
+            let mut it = it.clone();
+            // The model sometimes calls the inherited repository itself a fork; the engine knows better.
+            let is_own = results.iter().any(|r| r.id == cites[0] && r.repo.as_deref().is_some_and(|x| x.eq_ignore_ascii_case(own_repo)));
+            if !docs && is_own {
+                it["relation"] = json!("original");
+            }
+            it["url"] = json!(url);
+            it["cites"] = json!(cites);
+            Some(it)
+        }).collect()
+    };
+    let related = keep(&v["related"], false);
+    let documentation = keep(&v["documentation"], true);
+    let summary_cites = valid(&v["summary_cites"]);
+    json!({
+        "summary": v["summary"],
+        "summary_cites": summary_cites,
+        "summary_check": if summary_cites.is_empty() { "uncited" } else { "citations verified" },
+        "related": related,
+        "documentation": documentation,
+        "dropped_uncited": dropped,
+    })
+}
+
+pub async fn research_job(ctx: &mut JobCtx) -> anyhow::Result<()> {
+    let app = ctx.app.clone();
+    let id = ctx.id();
+    ctx.begin(RESEARCH_STEP).await?;
+    let row = app.row(&id)?;
+    let queries = research_queries(&row);
+    let mut found = Vec::new();
+    let mut errors = Vec::new();
+    for q in &queries {
+        match app.web.search(q, 8).await {
+            Ok(r) => found.extend(r),
+            Err(e) => errors.push(e.to_string()),
+        }
+    }
+    let results = crate::websearch::number(found, 18);
+    if results.is_empty() {
+        anyhow::bail!("web search found nothing{}", if errors.is_empty() { String::new() } else { format!(": {}", errors.join("; ")) });
+    }
+    let n = agents::nonce();
+    let listing = results
+        .iter()
+        .map(|r| format!("[{}] {} | {}{}\n    {}", r.id, r.title, r.url, r.repo.as_ref().map(|x| format!(" (GitHub repository {x})")).unwrap_or_default(), r.snippet))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let task = format!(
+        "Research the web context of an inherited open-source project, {} (\"{}\"). Below are live web search results. Identify (1) related projects: the original itself, forks, successors, maintained alternatives, or notable mentions; (2) documentation for the original. Every item must cite the ids (like W3) of the results that show it. Use only these results: never invent projects, names or URLs. Empty lists are fine. Then write a two-sentence summary for the person inheriting the project, citing ids in summary_cites.\n\n{}",
+        row.full_name,
+        row.github.description.as_deref().unwrap_or(""),
+        agents::untrusted(&n, "WEB SEARCH RESULTS", &listing)
+    );
+    let spec = CallSpec { agent: "historian", purpose: format!("Research the web context of {}", row.full_name), inheritance_id: Some(&id), parent_id: None, input_files: vec![format!("{} web results (SerpApi)", results.len())], task, schema: agents::research_schema(), max_tokens: 1400 };
+    let (v, call_id) = app.agents.call_json(spec, &n).await?;
+    let mut out = check_research(&v, &results, &row.full_name);
+    out["queries"] = json!(queries);
+    out["results"] = json!(results);
+    out["search_errors"] = json!(errors);
+    out["provider"] = json!("serpapi");
+    out["call_id"] = json!(call_id);
+    out["researched_at"] = json!(now());
+    app.db.put_artifact(&id, "web_research", &out)?;
+    ctx.finish(RESEARCH_STEP, "done", format!(
+        "{} searches, {} results; {} related project(s) and {} documentation source(s) with verified citations; {} uncited item(s) dropped",
+        queries.len(), results.len(), out["related"].as_array().map(|a| a.len()).unwrap_or(0),
+        out["documentation"].as_array().map(|a| a.len()).unwrap_or(0), out["dropped_uncited"]
+    ));
+    Ok(())
+}
+
+/// A compact, cited summary of the web research for the Lead's context, if there is one.
+pub fn web_research_brief(app: &App, id: &str) -> Option<String> {
+    let w: Value = app.db.get_artifact(id, "web_research").ok()??;
+    let mut s = format!("Web research ({}): {}\n", w["researched_at"].as_str().unwrap_or(""), w["summary"].as_str().unwrap_or(""));
+    for r in w["related"].as_array().into_iter().flatten().take(6) {
+        s.push_str(&format!("- related {} [{}]: {} ({})\n", r["name"].as_str().unwrap_or(""), r["relation"].as_str().unwrap_or(""), r["note"].as_str().unwrap_or(""), r["url"].as_str().unwrap_or("")));
+    }
+    for d in w["documentation"].as_array().into_iter().flatten().take(4) {
+        s.push_str(&format!("- docs {}: {}\n", d["title"].as_str().unwrap_or(""), d["url"].as_str().unwrap_or("")));
+    }
+    Some(s)
+}
+
 // ---------- upstream issue triage (Mastra workflow) ----------
 
 pub async fn triage_job(ctx: &mut JobCtx) -> anyhow::Result<()> {
@@ -1518,6 +1637,32 @@ pub async fn triage_job(ctx: &mut JobCtx) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn research_items_need_real_citations() {
+        let wr = |id: &str, url: &str| crate::websearch::WebResult { id: id.into(), query: "q".into(), title: "t".into(), url: url.into(), snippet: String::new(), source: String::new(), kind: if url.contains("readthedocs") { "docs".into() } else { "page".into() }, repo: None };
+        let mut results = vec![wr("W1", "https://github.com/a/fork"), wr("W2", "https://a.readthedocs.io/"), wr("W3", "https://github.com/o/r")];
+        results[2].repo = Some("o/r".into());
+        let v = json!({
+            "summary": "A fork exists [W1].", "summary_cites": ["W1"],
+            "related": [
+                {"name": "a/fork", "relation": "fork", "note": "active fork", "cites": ["W1", "W9"]},
+                {"name": "invented/project", "relation": "successor", "note": "made up", "cites": ["W7"]},
+                {"name": "no cites", "relation": "mention", "note": "", "cites": []},
+                {"name": "o/r", "relation": "fork", "note": "the inherited repo itself", "cites": ["W3"]}
+            ],
+            "documentation": [{"title": "Docs", "note": "", "cites": ["W1", "[W2]"]}, {"title": "summary_cites", "note": "", "cites": ["W2"]}]
+        });
+        let out = check_research(&v, &results, "o/r");
+        assert_eq!(out["related"].as_array().unwrap().len(), 2);
+        assert_eq!(out["related"][1]["relation"], json!("original"));
+        assert_eq!(out["related"][0]["cites"], json!(["W1"]));
+        assert_eq!(out["related"][0]["url"], json!("https://github.com/a/fork"));
+        assert_eq!(out["documentation"][0]["url"], json!("https://a.readthedocs.io/"));
+        assert_eq!(out["documentation"].as_array().unwrap().len(), 1);
+        assert_eq!(out["dropped_uncited"], json!(3));
+        assert_eq!(out["summary_check"], json!("citations verified"));
+    }
 
     #[test]
     fn edits_apply_atomically_and_validate() {

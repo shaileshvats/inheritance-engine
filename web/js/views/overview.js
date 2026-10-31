@@ -154,6 +154,34 @@ export class OverviewTab {
       note);
   }
 
+  /** Live web context (SerpApi), summarised by Gemma; every item cites a search result the engine checked. */
+  webCard(d) {
+    const w = d.web_research;
+    if (!w && !this.ctx.status?.web_search?.enabled) return null;
+    const start = h('button', { class: 'btn btn-secondary btn-sm', type: 'button', disabled: !!d.active_job }, w ? 'Search again' : 'Research on the web');
+    const note = h('p', { class: 'small muted', role: 'status', 'aria-live': 'polite' });
+    start.addEventListener('click', async () => {
+      start.disabled = true;
+      const job = await this.ctx.startJob(api.research(this.ctx.id));
+      note.textContent = job ? 'Searching the web (3 searches), then Gemma summarises with citations.' : 'Could not start web research.';
+    });
+    const link = (url, text) => h('a', { href: url, target: '_blank', rel: 'noopener noreferrer' }, text);
+    const byId = Object.fromEntries((w?.results || []).map((r) => [r.id, r]));
+    const cites = (ids) => h('span', { class: 'small muted' }, ' ', (ids || []).map((c, i) => [i ? ' ' : '', byId[c] ? link(byId[c].url, `[${c}]`) : `[${c}]`]));
+    return h('div', { class: 'card facts-card' },
+      h('h2', null, 'On the web'),
+      h('p', { class: 'small muted' }, 'Live search results (SerpApi) about this project, summarised by Gemma. Every item must cite a real result, or the engine drops it.'),
+      w ? [
+        h('p', { class: 'small' }, w.summary, cites(w.summary_cites)),
+        (w.related || []).length ? h('ul', { class: 'triage-list' }, w.related.map((r) => h('li', null, pill('info', titleCase(r.relation)), ' ', link(r.url, r.name), ' ', h('span', { class: 'small muted' }, r.note), cites(r.cites)))) : null,
+        (w.documentation || []).length ? h('ul', { class: 'triage-list' }, w.documentation.map((x) => h('li', null, pill('muted', 'Docs'), ' ', link(x.url, x.title), cites(x.cites)))) : null,
+        h('details', { class: 'small' }, h('summary', null, `${fmtNum((w.results || []).length)} results from ${fmtNum((w.queries || []).length)} searches · ${fmtNum(w.dropped_uncited || 0)} uncited item(s) dropped · ${fmtDate(w.researched_at, true)}`),
+          h('ol', null, (w.results || []).map((r) => h('li', null, `[${r.id}] `, link(r.url, r.title || r.url), ' ', h('span', { class: 'muted' }, r.source))))),
+      ] : null,
+      h('div', { class: 'row' }, start),
+      note);
+  }
+
   renderFacts(d) {
     const issues = d.issues || [];
     const open = issues.filter((i) => i.status === 'open');
@@ -177,6 +205,7 @@ export class OverviewTab {
         essential.length ? h('ul', { class: 'issue-mini' }, essential.slice(0, 4).map((i) => h('li', null, pill(i.severity), ' ', i.title))) : null,
         open.length ? h('button', { class: 'link small', type: 'button', onclick: () => this.ctx.goTab('restoration') }, 'Go to restoration →') : null),
       this.triageCard(d),
+      this.webCard(d),
       r && (r.next_actions || []).length ? h('div', { class: 'card facts-card' },
         h('h2', null, 'Next actions'),
         h('p', { class: 'small muted' }, 'Suggested by the Lead Engineer'),

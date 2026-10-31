@@ -271,6 +271,19 @@ pub fn lead_chat_schema() -> Value {
     )
 }
 
+pub fn research_schema() -> Value {
+    let cites = arr_max(s(), 4);
+    obj(
+        json!({
+            "summary": s(),
+            "summary_cites": cites,
+            "related": arr_max(obj(json!({"name": s(), "relation": en(&["original", "fork", "successor", "alternative", "mention"]), "note": s(), "cites": cites}), &["name", "relation", "note", "cites"]), 6),
+            "documentation": arr_max(obj(json!({"title": s(), "note": s(), "cites": cites}), &["title", "note", "cites"]), 4),
+        }),
+        &["summary", "summary_cites", "related", "documentation"],
+    )
+}
+
 pub fn hunter_query_schema() -> Value {
     obj(json!({"keywords": s(), "language": s(), "reasoning": s()}), &["keywords", "language", "reasoning"])
 }

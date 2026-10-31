@@ -129,6 +129,12 @@ every sandbox run (`gen_ai.execute_tool`). Only metadata leaves the machine. Tes
 and secret-shaped strings, and it was verified against a real Sentry project (see `docs/partners`). Set
 `IE_TELEMETRY_AUDIT=path` to keep a local copy of exactly what is sent.
 
+**Web search (SerpApi).** Set `SERPAPI_API_KEY` (the free plan is enough). The Hunter gets an *Also search the web*
+option that finds repositories GitHub's keyword search misses; each is re-fetched from the GitHub API and shows the page
+it was found on. On an inheritance, *Research on the web* runs three searches and has Gemma summarise related projects
+and documentation. Every item must cite a real result or the engine drops it, and the result feeds the Lead Engineer.
+Only search text and public repository names are sent.
+
 **Self-hosting.** [`deploy/self-host`](deploy/self-host/README.md) is a Docker Compose stack (engine, companion,
 Ollama with Gemma 4, Docker sandboxes) for a dedicated Linux host, reachable only through SSH. Its images were built
 and run locally; it has not been deployed to any cloud provider.
@@ -139,7 +145,7 @@ and run locally; it has not been deployed to any cloud provider.
 cargo test
 ```
 
-The engine has 53 Rust tests and the Mastra companion has 17 vitest tests (`cd companion/mastra && npm test`). They cover path traversal and symlink escapes, atomic edits, locked-down Docker
+The engine has 57 Rust tests and the Mastra companion has 19 vitest tests (`cd companion/mastra && npm test`). They cover path traversal and symlink escapes, atomic edits, locked-down Docker
 arguments, the cleared native environment, push being disabled and the original staying untouched, privacy policy
 enforcement, secret redaction, fabricated-citation detection, the regression and improvement rules, dangling-import
 detection, traceback parsing, test-summary parsing, and era-runtime selection. End-to-end runs against real repositories

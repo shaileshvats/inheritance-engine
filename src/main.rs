@@ -29,7 +29,7 @@ async fn main() -> anyhow::Result<()> {
         Some(url) => Some(inheritance_engine::mastra::MastraClient::new(url)?),
         None => None,
     };
-    let app = App::new(cfg.clone(), db, agents, GitHub::new(cfg.github_token.clone())?, mastra);
+    let app = App::new(cfg.clone(), db, agents, GitHub::new(cfg.github_token.clone())?, mastra, inheritance_engine::websearch::WebSearch::new()?);
     let interrupted = app.recover_jobs()?;
     if interrupted > 0 {
         tracing::warn!(interrupted, "jobs were interrupted by the last shutdown; resume them from the UI");

@@ -62,7 +62,8 @@ async function refreshStatus() {
         st.github_token ? 'GitHub token' : 'GitHub anonymous',
         st.github_token ? 'Using a GitHub token from the environment (read-only use)' : 'Anonymous GitHub API: low rate limits'),
       mastraChip(st.mastra),
-      st.sentry && st.sentry.enabled ? chip('good', 'Sentry tracing', 'Agent traces are sent to Sentry: metadata only (roles, models, tokens, latency, outcomes); no prompts, responses or source code') : null);
+      st.sentry && st.sentry.enabled ? chip('good', 'Sentry tracing', 'Agent traces are sent to Sentry: metadata only (roles, models, tokens, latency, outcomes); no prompts, responses or source code') : null,
+      st.web_search && st.web_search.enabled ? chip('good', 'Web search', 'SerpApi live search for the Hunter and web research: only search text and public repository names are sent') : null);
   } catch (e) {
     systemStatus = null;
     replace(el, chip('bad', 'Server unreachable', e.message));

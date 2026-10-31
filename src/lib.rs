@@ -20,3 +20,4 @@ pub mod security;
 pub mod telemetry;
 pub mod util;
 pub mod verify;
+pub mod websearch;

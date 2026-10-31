@@ -3,7 +3,8 @@
 use serde_json::{json, Value};
 
 use crate::agents::{self, Agents, CallSpec};
-use crate::contracts::{Candidate, GithubMeta, Signal};
+use crate::contracts::{Candidate, GithubMeta, Signal, WebSource};
+use crate::websearch::WebSearch;
 use crate::util::{truncate, years_since};
 
 pub struct GitHub {
@@ -105,6 +106,7 @@ fn candidate_from(v: &Value) -> Candidate {
         size_kb: v["size"].as_u64().unwrap_or(0),
         default_branch: v["default_branch"].as_str().unwrap_or("main").into(),
         signals: vec![],
+        web_source: None,
     };
     c.signals = signals(&c);
     c
@@ -155,7 +157,7 @@ pub fn signals(c: &Candidate) -> Vec<Signal> {
     s
 }
 
-fn sanitize_keywords(s: &str) -> String {
+pub(crate) fn sanitize_keywords(s: &str) -> String {
     s.chars()
         .map(|c| if c.is_alphanumeric() || c == '-' || c == ' ' || c == '+' || c == '#' { c } else { ' ' })
         .collect::<String>()
@@ -179,9 +181,11 @@ pub struct HuntResult {
     pub ai: Value,
     pub total: u64,
     pub results: Vec<Candidate>,
+    /// What the optional web search did: its query, the pages it found, or why it was skipped.
+    pub web: Value,
 }
 
-pub async fn hunt(gh: &GitHub, agents: &Agents, text: &str, mode: &str, lang: Option<&str>) -> anyhow::Result<HuntResult> {
+pub async fn hunt(gh: &GitHub, agents: &Agents, web: Option<&WebSearch>, text: &str, mode: &str, lang: Option<&str>) -> anyhow::Result<HuntResult> {
     let text = text.trim();
     if text.is_empty() {
         anyhow::bail!("describe a problem or a topic to search for");
@@ -221,8 +225,44 @@ pub async fn hunt(gh: &GitHub, agents: &Agents, text: &str, mode: &str, lang: Op
         q.push_str(" stars:>3");
         None
     };
-    let (total, results) = gh.search(&q, sort).await?;
-    Ok(HuntResult { query_used: q, ai, total, results })
+    let (total, mut results) = gh.search(&q, sort).await?;
+    let web = match web {
+        None => json!({"used": false}),
+        Some(w) => {
+            let wq = format!("{} github", language.as_deref().map(|l| format!("{keywords} {l}")).unwrap_or_else(|| keywords.clone()));
+            match w.search(&wq, 10).await {
+                Ok(found) => merge_web(gh, &mut results, &wq, found).await,
+                Err(e) => json!({"used": true, "query": wq, "error": e.to_string()}),
+            }
+        }
+    };
+    Ok(HuntResult { query_used: q, ai, total, results, web })
+}
+
+/// Adds repositories the web search found to the GitHub results (marking ones already there), and returns the other
+/// pages as related reading. Every added repository is re-fetched from the GitHub API, so its signals are real.
+async fn merge_web(gh: &GitHub, results: &mut Vec<Candidate>, query: &str, found: Vec<crate::websearch::WebResult>) -> Value {
+    let mut added = 0;
+    let mut pages = Vec::new();
+    for r in &found {
+        let src = WebSource { title: r.title.clone(), url: r.url.clone(), query: query.to_string() };
+        match &r.repo {
+            Some(name) => {
+                if let Some(c) = results.iter_mut().find(|c| c.full_name.eq_ignore_ascii_case(name)) {
+                    c.web_source.get_or_insert(src);
+                } else if added < 5 {
+                    if let Ok((mut c, _)) = gh.repo(name).await {
+                        c.web_source = Some(src);
+                        results.insert(added, c);
+                        added += 1;
+                    }
+                }
+            }
+            None => pages.push(json!({"title": r.title, "url": r.url, "snippet": r.snippet, "source": r.source, "kind": r.kind})),
+        }
+    }
+    pages.truncate(6);
+    json!({"used": true, "query": query, "repositories_added": added, "results_seen": found.len(), "pages": pages})
 }
 
 pub async fn explain(gh: &GitHub, agents: &Agents, full_name: &str) -> anyhow::Result<(Value, usize, String)> {

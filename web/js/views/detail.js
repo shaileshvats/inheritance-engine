@@ -40,7 +40,9 @@ export class DetailView {
       goTab: (tab, focus) => { this.ctx.focus = focus || null; location.hash = `#/i/${encodeURIComponent(id)}/${tab}`; },
       jobActive: () => !!(this.detail && this.detail.active_job && ACTIVE_JOB.has(this.detail.active_job.status)),
       startJob: (promise) => this.startJob(promise),
+      status: null,
     };
+    api.status().then((s) => { this.ctx.status = s; }).catch(() => {});
     this.lastStepKey = null;
   }
 

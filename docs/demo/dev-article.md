@@ -98,10 +98,21 @@ kw(1)(2)    [**opts]      (1, 2, [])         still curried, waiting
 had used plain positional functions.
 
 So **the human gets a vote too**. Any issue can be reopened with your own finding. The Restorer and Tester receive it as
-a human finding that outranks passing tests, and the project can't be marked *verified* while it's open. I gave Gemma
-more passes at it today. It came close: one patch switched to `getfullargspec` but left `signature()` in the condition,
-and another invented an attribute that doesn't exist. **The Reviewer rejected both**, and the successor still says,
-accurately:
+a human finding that outranks passing tests, and the project can't be marked *verified* while it's open.
+
+On submission day I gave Gemma two more passes at it. Four patches, four different ways to be wrong:
+
+1. Switched to `getfullargspec` but left `signature()` in the condition. **The Reviewer rejected it.**
+2. Invented `f.locals['max_var']`. **The Reviewer rejected it.**
+3. The same half-fix as the first. **The Reviewer rejected it again.**
+4. Invented `f.prflags`. This time **the Reviewer approved it**, calling it "correct", and the tests stayed at 126
+   passed. Then the Tester wrote a probe *straight from my reopened note*, "Reproduce human note behavior for `*args`
+   and `**kwargs`", and the engine ran it against the original on Python 3.9. Original: `(1, 2)`. Successor:
+   `NameError`. Three probes, three changed. **Reverted.**
+
+![The Reviewer approved the patch and the tests stayed green, but the behaviour probe against the original caught it](https://raw.githubusercontent.com/shaileshvats/inheritance-engine/main/docs/demo/screenshots/11-probe-catches-approved-patch.jpg)
+
+The human's finding became the probe that stopped the model's mistake. The successor still says, accurately:
 
 > 126 passed — not marked verified: the inheritor's reopened issue is unresolved
 
@@ -144,9 +155,9 @@ taught which lesson.
 - **Durable jobs:** every pipeline step is checkpointed. I killed the server mid-investigation and resumed it; clone,
   inventory, baseline and plan were skipped, not re-run.
 - **Vanilla JS** UI with no build step and no external requests, under a strict Content-Security-Policy.
-- **Tests:** 53 Rust tests for the safety rules (path traversal, symlink escapes, push disabled, original untouched,
+- **Tests:** 57 Rust tests for the safety rules (path traversal, symlink escapes, push disabled, original untouched,
   cleared environment, redaction, fabricated citations, the regression rules, era-runtime selection, telemetry
-  scrubbing) and 19 for the Mastra companion.
+  scrubbing, web citation checks) and 19 for the Mastra companion.
 
 ### Mastra: asking the original repository what still matters
 
@@ -155,9 +166,12 @@ An inheritor doesn't only get code. They get the issue tracker too. fn.py still 
 the successor changed. As always, the engine has the last word: "addressed" only survives if it cites a repair or
 commit that really exists.
 
-In the real run, it found that upstream **#91, "ImportError: cannot import name Iterable from collections"**, is fixed
-by the successor, citing the exact repair and commit. The other seven it looked at are feature requests and questions
-that still stand. That's the inheritor's to-do list, inherited too.
+In the first real run, it found that upstream **#91, "ImportError: cannot import name Iterable from collections"**, is
+fixed by the successor, citing the exact repair and commit. The other seven it looked at are feature requests and
+questions that still stand. That's the inheritor's to-do list, inherited too.
+
+When I re-ran it on submission day, Gemma again said #91 was addressed, but this time it cited nothing. The engine
+downgraded it to *needs a human*. Same model, same issue, different day: that is exactly why the check exists.
 
 ![Mastra triage of fn.py's open upstream issues: #91 addressed, with a verified citation](https://raw.githubusercontent.com/shaileshvats/inheritance-engine/main/docs/demo/screenshots/05-mastra-upstream-triage.jpg)
 
@@ -165,6 +179,29 @@ The Lead Engineer chat also runs as a Mastra agent with read-only tools over the
 build couldn't render Gemma 4's chat template with tools, so the companion probes the runtime at startup. When tool
 calling isn't available, it runs a Mastra workflow that calls the same tools deterministically and has Gemma answer
 with structured output. Same tools, same rules, and it works on today's runtime.
+
+### SerpApi: when GitHub search isn't enough
+
+GitHub's search API matches keywords in names and descriptions. Abandoned projects often describe themselves badly, so
+the Hunter can also search the web through [SerpApi](https://serpapi.com). For *"python event signal dispatch
+library"* in curiosity mode, GitHub's own search returned a JavaScript reactive-programming essay, a Flask template, a
+system-design primer and a PHP daemon. The web search added
+`pallets-eco/blinker` and `nitely/python-signals`, the libraries that actually do that. Each repository found on the
+web is re-fetched from the GitHub API, so its signals are real, and the card says which page it was found on.
+
+![Hunter results with web search: repositories found on the web, each with its source page](https://raw.githubusercontent.com/shaileshvats/inheritance-engine/main/docs/demo/screenshots/09-hunter-web-search.jpg)
+
+For an inheritance, a **web research** job runs three searches: mentions of `owner/repo`, the project and its topic, and
+its documentation. Gemma then summarises related projects and docs, and every item has to cite a result id like `[W2]`.
+The engine drops anything uncited, removes duplicates, and fixes labels it can check itself: Gemma once called the
+original repository a "fork" of itself. The result feeds the Lead Engineer, both the engine's chat and the Mastra
+agent, so *"where are the docs?"* gets a sourced answer.
+
+![Web research for fn.py: a cited summary, the original and its documentation site](https://raw.githubusercontent.com/shaileshvats/inheritance-engine/main/docs/demo/screenshots/10-web-research.jpg)
+
+It's honest about thin results. For a 2014 library, Google returned four usable pages, and the 4B model once echoed
+schema field names as "documentation", which the engine now filters out. Only the search text and public repository
+names are sent, never repository content. Everything ran on SerpApi's free plan.
 
 ### Sentry: watching the agents work without leaking the code
 
@@ -235,6 +272,8 @@ and the runtime agents are Gemma.
   triage workflow, all over Gemma, all used by the product.
 - **Best Use of Sentry Agent Tracing**: real traces from both the Rust engine and the Mastra companion in Sentry's AI
   Agents views, with tokens and latency per call, verified to carry no prompts or code.
+- **Best Use of SerpApi**: live web search in the Hunter to discover repositories GitHub's search misses, and a web
+  research job that gives the agents cited, engine-checked sources about an inherited project.
 
 ---
 

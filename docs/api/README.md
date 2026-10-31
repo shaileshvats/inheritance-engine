@@ -22,10 +22,14 @@ Timestamps are RFC 3339 strings. IDs are opaque strings.
 
 ## Hunter (discovery)
 
-`GET /api/hunt?q=<text>&mode=problem|curiosity&lang=<optional language>`
+`GET /api/hunt?q=<text>&mode=problem|curiosity&lang=<optional language>&web=true`
 
 - `problem` mode: Gemma rewrites the user's problem into a GitHub search query (a real model call, recorded).
 - `curiosity` mode: the text is used as topic/keywords and the query is biased towards old, quiet repositories.
+- `web=true` (only when `SERPAPI_API_KEY` is set): the same keywords are also searched on the web through SerpApi.
+  GitHub repositories found there are re-fetched from the GitHub API, inserted first and marked with `web_source`
+  (`{title, url, query}`). The response's `web` field has the query, counts and other pages
+  (`{used, query, results_seen, repositories_added, pages[]}`) or `{used, error}`.
 
 ```json
 {
@@ -207,6 +211,8 @@ Starts an `investigate` job immediately (clone → inventory → baseline verifi
 | POST | `/api/inheritances/{id}/investigate` | – | `Job` (re-runs only incomplete steps) |
 | POST | `/api/inheritances/{id}/restore` | `{ "mode": "essential\|fix_all\|selected", "issue_ids": [] }` | `Job` |
 | POST | `/api/inheritances/{id}/verify` | `{ "command": "optional user-edited command" }` | `Job` |
+| POST | `/api/inheritances/{id}/triage` | `{ "max_issues": 8 }` | `Job` (Mastra workflow; result in `upstream_triage`) |
+| POST | `/api/inheritances/{id}/research` | – | `Job` (3 SerpApi searches + one Gemma summary; result in `web_research`: `summary`, `related[]`, `documentation[]`, each with `cites` and `url`, plus `results[]` numbered `W1…`, `dropped_uncited`) |
 | POST | `/api/inheritances/{id}/execution-mode` | `{ "mode": "docker\|native\|none" }` | `InheritanceSummary` |
 | PATCH | `/api/inheritances/{id}/successor` | `{ "name": "new name" }` | `InheritanceSummary` |
 | POST | `/api/jobs/{id}/cancel` \| `/pause` \| `/resume` | – | `Job` |

@@ -47,6 +47,13 @@ export function summarizeDetail(d: any) {
           })),
         }
       : null,
+    web_research: d.web_research
+      ? {
+          summary: truncate(d.web_research.summary ?? '', 400),
+          related: (d.web_research.related ?? []).slice(0, 6).map((r: any) => ({ name: r.name, relation: r.relation, url: r.url })),
+          documentation: (d.web_research.documentation ?? []).slice(0, 4).map((x: any) => ({ title: x.title, url: x.url })),
+        }
+      : null,
   };
 }
 

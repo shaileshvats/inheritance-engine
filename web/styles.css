@@ -684,6 +684,12 @@ details[open] > summary::before { transform: rotate(90deg); }
   .detail-health { align-items: flex-start; }
   .brand-tagline { display: none; }
 }
+/* When the status chips no longer fit beside the brand, give them their own row and keep the theme toggle on the
+   first row, instead of letting the toggle wrap alone. */
+@media (max-width: 1240px) {
+  .topbar-status { order: 3; width: 100%; margin-left: 0; }
+  #theme-toggle { margin-left: auto; }
+}
 @media (max-width: 560px) {
   h1 { font-size: 1.5rem; }
   .topbar { gap: 10px; }
