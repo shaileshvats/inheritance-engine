@@ -1,6 +1,8 @@
 # Continuous verification on GitHub-hosted runners (free for public repositories).
 # - rust:   clippy and the engine's unit tests (safety rules, revert rules, telemetry scrubbing, citation checks)
-# - mastra: the companion's typecheck and vitest suite
+# - mastra: the companion's typecheck and vitest suite, including the restoration memory against Tiger Data's
+#           Postgres image (pgvector + pgvectorscale) as a service container
+# - temporal: the Temporal companion's typecheck and tests (workflow tests on Temporal's time-skipping test server)
 # - replay: builds the engine, runs the bundled replay through live Docker checks on a clean machine, fails unless the
 #           behaviour probe still catches the recorded patch, and uploads the resulting Inheritance Record.
 # No model, API key or secret is used anywhere in this workflow.
@@ -17,7 +19,7 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   rust:
@@ -34,7 +36,18 @@ jobs:
 
   mastra:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
+    services:
+      memory:
+        image: timescale/timescaledb-ha:pg17
+        env:
+          POSTGRES_PASSWORD: ie
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 30
+    env:
+      IE_TEST_MEMORY_DATABASE_URL: postgres://postgres:ie@127.0.0.1:5432/postgres
     defaults:
       run:
         working-directory: companion/mastra
@@ -45,6 +58,25 @@ jobs:
           node-version: "22.18"
           cache: npm
           cache-dependency-path: companion/mastra/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - name: Wait for the memory database (the image restarts once after initialising)
+        run: for i in $(seq 1 40); do pg_isready -h 127.0.0.1 -p 5432 && sleep 5 && pg_isready -h 127.0.0.1 -p 5432 && exit 0; sleep 2; done; exit 1
+      - run: npm test
+
+  temporal:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: companion/temporal
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.18"
+          cache: npm
+          cache-dependency-path: companion/temporal/package-lock.json
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
