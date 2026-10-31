@@ -82,7 +82,8 @@ fn apply_patch(app: &App, id: &str, name: &str, diff: &str) -> anyhow::Result<()
     let layout = app.layout(id);
     let path = layout.root.join(format!("{name}.patch"));
     std::fs::write(&path, diff)?;
-    let p = path.to_string_lossy().into_owned();
+    // git runs inside the successor, so a relative data dir (the default) must not leak into the path.
+    let p = std::fs::canonicalize(&path)?.to_string_lossy().into_owned();
     gitops::git_in(&layout.successor(), &["apply", "--whitespace=nowarn", &p])?;
     Ok(())
 }

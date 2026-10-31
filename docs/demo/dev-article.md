@@ -37,7 +37,7 @@ most interesting one.
 
 ## Demo
 
-<!-- VIDEO: replace with {% embed <youtube or loom url> %} once recorded -->
+> 🎥 **VIDEO PLACEHOLDER:** the demo video is not recorded yet. This block will be replaced with the YouTube or Loom embed before publishing.
 
 The demo inherits [kachayev/fn.py](https://github.com/kachayev/fn.py), "Functional programming in Python" (Apache-2.0,
 about 3.4k stars, last commit on its default branch in October 2014). On Python 3.12 its tests don't even start:
@@ -107,8 +107,8 @@ On submission day I gave Gemma two more passes at it. Four patches, four differe
 3. The same half-fix as the first. **The Reviewer rejected it again.**
 4. Invented `f.prflags`. This time **the Reviewer approved it**, calling it "correct", and the tests stayed at 126
    passed. Then the Tester wrote a probe *straight from my reopened note*, "Reproduce human note behavior for `*args`
-   and `**kwargs`", and the engine ran it against the original on Python 3.9. Original: `(1, 2)`. Successor:
-   `NameError`. Three probes, three changed. **Reverted.**
+   and `**kwargs`", and the engine ran it against the original on Python 3.9. Original: `(1, 2)`, then a
+   `TypeError`. Successor: `NameError`. Three probes, three changed. **Reverted.**
 
 ![The Reviewer approved the patch and the tests stayed green, but the behaviour probe against the original caught it](https://raw.githubusercontent.com/shaileshvats/inheritance-engine/main/docs/demo/screenshots/11-probe-catches-approved-patch.jpg)
 
@@ -173,7 +173,7 @@ questions that still stand. That's the inheritor's to-do list, inherited too.
 When I re-ran it on submission day, Gemma again said #91 was addressed, but this time it cited nothing. The engine
 downgraded it to *needs a human*. Same model, same issue, different day: that is exactly why the check exists.
 
-![Mastra triage of fn.py's open upstream issues: #91 addressed, with a verified citation](https://raw.githubusercontent.com/shaileshvats/inheritance-engine/main/docs/demo/screenshots/05-mastra-upstream-triage.jpg)
+![Mastra triage of fn.py's open upstream issues (first run): #91 addressed, with a verified citation](https://raw.githubusercontent.com/shaileshvats/inheritance-engine/main/docs/demo/screenshots/05-mastra-upstream-triage.jpg)
 
 The Lead Engineer chat also runs as a Mastra agent with read-only tools over the engine's findings. My local LM Studio
 build couldn't render Gemma 4's chat template with tools, so the companion probes the runtime at startup. When tool
@@ -206,8 +206,8 @@ names are sent, never repository content. Everything ran on SerpApi's free plan.
 ### Sentry: watching the agents work without leaking the code
 
 Both the Rust engine and the Mastra companion send traces to Sentry. Each investigation shows up as an agent run: the
-team's job, every Gemma call with its role, tokens and latency, and every sandbox run as a tool call. Over the week,
-Sentry's AI Agents view counted 24 Gemma calls and 53,669 tokens.
+team's job, every Gemma call with its role, tokens and latency, and every sandbox run as a tool call. In the 7-day
+window shown, Sentry's AI Agents view counted 24 Gemma calls and 53,669 tokens.
 
 ![Sentry AI Agents overview: Gemma calls, tokens and the engine's sandbox tool calls](https://raw.githubusercontent.com/shaileshvats/inheritance-engine/main/docs/demo/screenshots/06-sentry-ai-agents.jpg)
 
