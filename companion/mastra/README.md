@@ -21,7 +21,7 @@ A small TypeScript service built with [Mastra](https://mastra.ai) (`@mastra/core
 npm ci --ignore-scripts
 npm run serve        # narrow loopback API on 127.0.0.1:7880, used by the engine (IE_MASTRA_URL)
 npm run dev          # optional: Mastra Studio for exploring the agents and workflows
-npm test             # 17 tests: rules, workflows against a local fixture model, HTTP server
+npm test             # 19 tests: rules, workflows against a local fixture model, HTTP server
 ```
 
 Then start the engine with `IE_MASTRA_URL=http://127.0.0.1:7880`.

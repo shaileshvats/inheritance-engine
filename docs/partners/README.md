@@ -1,6 +1,6 @@
 # Partner category audit (HF26 Week 4)
 
-Audited on 2026-10-28 (updated the same day after the Mastra, Sentry and DigitalOcean work) against the official category descriptions on the [HF26 Challenge Hub](https://dev.to/challenges/hf26)
+Audited on 2026-10-28, updated after the Mastra and Sentry work and again on 2026-10-31 for a zero budget, against the official category descriptions on the [HF26 Challenge Hub](https://dev.to/challenges/hf26)
 and the code in this repository. The official rule is: *"Use only partner tech your project actually uses."*
 A category is marked **Implemented** only when the code uses the technology in the product and there is evidence
 to show for it.
@@ -14,16 +14,16 @@ Deadline: 2026-10-31 23:59 PDT. A submission can win only once, and writing qual
 | Gemma (featured) | **Implemented** | Done |
 | Mastra | **Implemented**: Lead Engineer agent + two workflows, used by the product; real runs recorded | Done |
 | Sentry Agent Tracing | **Implemented and demonstrated**: real traces from both processes, shown in Sentry's AI Agents views | Done |
-| DigitalOcean (featured) | **Prepared, not deployed**: compose stack and images built locally | Needs the owner to sign in and confirm credits; nothing billable created |
+| DigitalOcean (featured) | **Not pursued**: zero budget, and no DigitalOcean credits were offered | No. A Droplet would be paid; nothing was created |
 | Temporal | Not implemented; SQLite checkpoints do the same job today | Possible but high risk: about 1.5 days, second runtime |
 | Auth0 for AI Agents | Not implemented, real fit (GitHub actions on the user's behalf, with approval) | Risky: 1–2 days plus Auth0 tenant and GitHub connection setup |
-| SerpApi | Not implemented, minor fit | Yes, a few hours. Low product value |
+| SerpApi | Not implemented | Free plan exists (250 searches/month, sign-up shows no payment step); needs the owner's sign-up |
 | Ultramarine (Paper Instruments) | Not implemented; it is a hosted model behind an OpenAI-compatible adapter | Yes, a few hours. Conflicts with the local-only default; opt-in comparison only |
 | Backboard | Not implemented, weak fit | Possible, low value |
 | MongoDB Atlas / Tiger Data | Not implemented; no real need yet | Possible (restoration-recipe retrieval), questionable value with so few runs |
 | ElevenLabs | Not implemented | Demo narration qualifies officially, but it isn't a product feature |
-| Render (featured) | Not implemented; poor fit for the full engine | Only as a hosted Hunter-only front end. Overlaps DigitalOcean |
-| .tech Domain | Not implemented | Only together with a hosted deployment; free first year, renews at $29.99/yr |
+| Render (featured) | Not implemented; poor fit for the full engine | Only as a hosted Hunter-only front end; the full engine cannot run there |
+| .tech Domain | **Not pursued** | The rule needs the project live on the domain, and there is no free host that can run it |
 | Browserbase | Not implemented | No: the demo repository has no web UI to test |
 | GitHub Copilot | Not used | No, not genuinely: Copilot was not used to build this |
 | Entire | Not used | No for past work. Future sessions could be captured |
@@ -96,18 +96,14 @@ Deadline: 2026-10-31 23:59 PDT. A submission can win only once, and writing qual
   transport of both processes for every item type.
 - **Cost:** Sentry's "Estimated Cost" panel is empty. The model runs locally, with no per-token price, so the real cost is $0.
 
-### DigitalOcean — Prepared, not deployed
+### DigitalOcean — Not pursued (zero budget)
 - **Requirement:** "Build or deploy your project on DigitalOcean": host an app or agent, or run an open-weight model on a GPU Droplet.
-- **Prepared:** `deploy/digitalocean/` contains a compose stack (Ollama + Gemma 4, engine, Mastra companion,
-  sandboxes through the host Docker), Dockerfiles, a cloud-init file (SSH-only firewall), and a guide with sizing,
-  cost warnings and teardown.
-- **Validated locally:** both images build. The companion container starts, serves `/health`, and refuses a non-local
-  model endpoint. The engine container, running with the Docker socket, ran a real clone, inventory and sandboxed
-  baseline from inside the container, and its privacy policy refused a non-loopback model endpoint. Details are in
-  `deploy/digitalocean/README.md`.
-- **Not done:** no Droplet exists. The Hacktoberfest promos page requires the owner's MLH sign-in to check
-  DigitalOcean credits. Creating a Droplet is billable and needs the owner's account and approval. **Not claimed until
-  deployed and demonstrated.**
+- **Credits checked 2026-10-31:** the owner's Hacktoberfest promos page offers .tech, Backboard, Browserbase,
+  ElevenLabs, Paper Instruments, Render and Tinker, and **no DigitalOcean credits**. The MLH event offers list only
+  ElevenLabs. A Droplet big enough for Gemma 4 E4B (Basic, 16 GB) costs $0.143/hour, and the project's budget is zero.
+- **Decision:** no account, payment method, trial or Droplet was created. The category is not claimed.
+- **What exists instead:** a generic self-host compose stack in `deploy/self-host`, validated locally only. It is not
+  a DigitalOcean deployment and is not presented as one.
 
 ### Temporal — possible, not recommended
 - **Requirement:** "Wrap [your agent] in a Temporal workflow so it survives failures," retries flaky tool calls, and
@@ -125,10 +121,14 @@ Deadline: 2026-10-31 23:59 PDT. A submission can win only once, and writing qual
 - **Work:** Auth0 tenant, GitHub connection with Token Vault, local login callback, approval UI, and a new outward-facing
   action that needs careful security review. 1–2 days.
 
-### SerpApi — feasible, low value
+### SerpApi — free plan available, not implemented
 - **Requirement:** live web search for an agent, RAG grounding, or tracking news for an open-source project.
-- **Possible use:** the Historian searches the web for talks and posts about an inherited project, as context for its
-  original intent. GitHub search does not need it, per the PRD.
+- **Cost check 2026-10-31:** the pricing page lists a Free plan at $0 with 250 searches/month and 50/hour. Sign-up is
+  through GitHub or Google and shows no payment step. Paid plans start at $25/month and are not needed.
+- **Possible use:** web discovery in the Hunter (repositories mentioned on pages about the user's problem), plus a
+  research job that finds forks, successors and documentation and gives them to the agents as cited, engine-checked
+  context.
+- **Status:** not built. It needs the owner to create a free account and add `SERPAPI_API_KEY` to the local `.env`.
 
 ### Ultramarine (Paper Instruments) — feasible, opt-in only
 - **Requirement:** put Ultramarine to work on something real via the OpenAI/Anthropic SDK, and report what the run cost.
@@ -146,9 +146,10 @@ Deadline: 2026-10-31 23:59 PDT. A submission can win only once, and writing qual
 
 ### Render and .tech Domain
 - **Render** hosts web services without Docker-in-Docker, so the full engine (which must sandbox code) can't run there. A
-  hosted Hunter-only front end is possible but overlaps DigitalOcean. The PRD says not to integrate two competing
-  infrastructure providers for coverage.
-- **.tech** requires the project to be live on the domain, so it only makes sense alongside a hosted deployment.
+  hosted Hunter-only front end is possible, but it would be a different product from the one being judged.
+- **.tech** requires the project to be live on the domain. The free first-year code needs a verified phone on MyMLH
+  and renews at $29.99/yr. The engine needs Docker and a 7 GB model, which no free host provides, and exposing the
+  owner's laptop publicly is not acceptable for a tool that runs untrusted code. Not pursued, and no code was claimed.
 
 ### Not feasible or not genuine before the deadline
 - **TabPFN:** predicting "restorability" would need real labelled outcomes from many restorations; we have three runs.

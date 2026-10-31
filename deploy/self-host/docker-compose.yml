@@ -1,6 +1,6 @@
-# Inheritance Engine on a single DigitalOcean Droplet (or any Linux host with Docker).
+# Inheritance Engine on a single Linux host with Docker (a VM you control).
 # Every service uses host networking and binds to 127.0.0.1: nothing is exposed publicly.
-# Reach the UI through an SSH tunnel:  ssh -L 7878:127.0.0.1:7878 root@<droplet-ip>
+# Reach the UI through an SSH tunnel:  ssh -L 7878:127.0.0.1:7878 user@<host>
 name: inheritance-engine
 
 services:
@@ -32,7 +32,7 @@ services:
   engine:
     build:
       context: ../..
-      dockerfile: deploy/digitalocean/Dockerfile.engine
+      dockerfile: deploy/self-host/Dockerfile.engine
     network_mode: host
     environment:
       IE_BIND: 127.0.0.1:7878
@@ -45,7 +45,7 @@ services:
       IE_PRIVACY_MODE: local_only
       IE_MASTRA_URL: http://127.0.0.1:7880
       SENTRY_DSN: ${SENTRY_DSN:-}
-      SENTRY_ENVIRONMENT: digitalocean
+      SENTRY_ENVIRONMENT: self-host
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
@@ -58,7 +58,7 @@ services:
   mastra:
     build:
       context: ../..
-      dockerfile: deploy/digitalocean/Dockerfile.mastra
+      dockerfile: deploy/self-host/Dockerfile.mastra
     network_mode: host
     environment:
       IE_ENGINE_URL: http://127.0.0.1:7878
@@ -67,7 +67,7 @@ services:
       IE_MODEL_ENDPOINT: http://127.0.0.1:11434/v1
       IE_MODEL: ${IE_MODEL:-gemma4:e4b}
       SENTRY_DSN: ${SENTRY_DSN:-}
-      SENTRY_ENVIRONMENT: digitalocean
+      SENTRY_ENVIRONMENT: self-host
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
     depends_on:
       model:

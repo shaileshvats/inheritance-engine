@@ -129,9 +129,9 @@ every sandbox run (`gen_ai.execute_tool`). Only metadata leaves the machine. Tes
 and secret-shaped strings, and it was verified against a real Sentry project (see `docs/partners`). Set
 `IE_TELEMETRY_AUDIT=path` to keep a local copy of exactly what is sent.
 
-**DigitalOcean.** [`deploy/digitalocean`](deploy/digitalocean/README.md) runs the whole stack (engine, companion,
-Ollama with Gemma 4, Docker sandboxes) on one Droplet, reachable only through SSH. The deployment is prepared and
-validated locally; whether it has been deployed is recorded in [`docs/partners`](docs/partners/README.md).
+**Self-hosting.** [`deploy/self-host`](deploy/self-host/README.md) is a Docker Compose stack (engine, companion,
+Ollama with Gemma 4, Docker sandboxes) for a dedicated Linux host, reachable only through SSH. Its images were built
+and run locally; it has not been deployed to any cloud provider.
 
 ## Tests
 

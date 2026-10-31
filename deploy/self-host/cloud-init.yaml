@@ -1,5 +1,5 @@
 #cloud-config
-# Provisions an Ubuntu Droplet for Inheritance Engine. Only SSH is open to the internet.
+# Provisions an Ubuntu VM for Inheritance Engine (any cloud-init capable host). Only SSH is open to the internet.
 package_update: true
 packages:
   - docker.io
@@ -13,4 +13,4 @@ runcmd:
   - systemctl enable --now docker
   - mkdir -p /srv/inheritance-engine/data
   - git clone https://github.com/shaileshvats/inheritance-engine.git /opt/inheritance-engine
-  - cd /opt/inheritance-engine/deploy/digitalocean && docker compose up -d --build
+  - cd /opt/inheritance-engine/deploy/self-host && docker compose up -d --build

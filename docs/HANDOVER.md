@@ -23,7 +23,8 @@ All optional; see [`.env.example`](../.env.example). Nothing requires an account
 
 ## 5. Tests and their real results
 
-- `cargo test`: **45 passed, 0 failed**. `cargo clippy --all-targets`: no warnings.
+- `cargo test`: **53 passed, 0 failed** (re-run 2026-10-31). `cargo clippy --all-targets`: no warnings.
+- `npm test` in `companion/mastra`: **19 passed** (re-run 2026-10-31).
 - End-to-end runs on kachayev/fn.py with Gemma 4 E4B: see [demo/README.md](demo/README.md). That document reports
   the failures too.
 - Not run: SAST, dependency audit (`cargo audit` is not installed), container scanning, fuzzing, a malicious-repository
@@ -44,7 +45,8 @@ See [partners/README.md](partners/README.md) for the full audit.
   real-run evidence.
 - **Sentry Agent Tracing: implemented and demonstrated** with real traces from both processes in Sentry's AI Agents
   views. Verified to carry no content, both locally and server side.
-- **DigitalOcean: prepared and validated locally, not deployed.** It needs the owner's sign-in and credits.
+- **DigitalOcean: not pursued.** The project has a zero budget and no promotional credits were offered (checked
+  2026-10-31). The self-host compose stack in `deploy/self-host` was validated locally only.
 - **Everything else:** not integrated.
 
 ## 8. Deployment
