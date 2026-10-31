@@ -2,6 +2,7 @@
 // every action that changes state stays a button the user presses in the engine's UI.
 
 export interface EngineClient {
+  list(): Promise<any[]>;
   detail(id: string): Promise<any>;
   file(id: string, path: string, side?: 'successor' | 'original'): Promise<{ path: string; content: string; lines: number }>;
   diff(id: string): Promise<{ base: string; head: string; diff: string }>;
@@ -16,6 +17,7 @@ export function engineClient(baseUrl: string, fetchImpl: typeof fetch = fetch): 
   };
   const enc = encodeURIComponent;
   return {
+    list: () => get('/api/inheritances'),
     detail: (id) => get(`/api/inheritances/${enc(id)}`),
     file: (id, path, side = 'successor') => get(`/api/inheritances/${enc(id)}/file?${new URLSearchParams({ path, side })}`),
     diff: (id) => get(`/api/inheritances/${enc(id)}/diff`),

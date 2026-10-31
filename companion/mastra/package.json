@@ -2,7 +2,7 @@
   "name": "inheritance-engine-mastra",
   "private": true,
   "version": "0.1.0",
-  "description": "Mastra companion for Inheritance Engine: Lead Engineer agent with engine tools and an upstream-issue triage workflow, over a local Gemma model.",
+  "description": "Mastra companion for Inheritance Engine: Lead Engineer agent with engine tools, an upstream-issue triage workflow and an optional restoration memory (Postgres + pgvector), over a local Gemma model.",
   "type": "module",
   "license": "SEE LICENSE IN ../../LICENSE",
   "engines": {
@@ -14,7 +14,8 @@
     "start": "node .mastra/output/index.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "serve": "node src/server.ts"
+    "serve": "node src/server.ts",
+    "memory": "node src/memory-cli.ts"
   },
   "dependencies": {
     "@mastra/core": "1.79.0",
@@ -22,10 +23,12 @@
     "@mastra/sentry": "1.2.28",
     "@sentry/node": "10.77.1",
     "mastra": "1.35.0",
+    "pg": "8.23.1",
     "zod": "3.25.76"
   },
   "devDependencies": {
     "@types/node": "26.6.5",
+    "@types/pg": "8.23.1",
     "typescript": "7.0.2",
     "vitest": "5.0.5"
   }

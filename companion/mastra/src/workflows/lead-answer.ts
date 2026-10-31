@@ -40,12 +40,22 @@ export function createLeadAnswerWorkflow(tools: LeadTools) {
       const ctx = { requestContext } as any;
       const used: string[] = [];
       const call = async (name: keyof LeadTools, args: any) => {
-        used.push(String(tools[name].id));
+        used.push(String(tools[name]!.id));
         return (tools[name] as any).execute(args, ctx);
       };
       const overview = await call('getProjectOverview', {});
       const issues = await call('listIssues', {});
       const repairs = await call('listRepairs', {});
+      // Restoration memory (optional): precedents from other inherited projects for this question and the open issues.
+      let memory: any = null;
+      if ('searchRestorationMemory' in tools) {
+        const open = (issues as any).issues.filter((i: any) => i.status !== 'repaired').slice(0, 3).map((i: any) => i.title);
+        try {
+          memory = await call('searchRestorationMemory' as keyof LeadTools, { query: [inputData.question, ...open].join('\n'), limit: 4 });
+        } catch (e: any) {
+          memory = { error: `restoration memory unavailable: ${String(e?.message ?? e).slice(0, 120)}` };
+        }
+      }
       const files = [];
       for (const f of mentionedFiles(inputData.question)) {
         try {
@@ -60,6 +70,7 @@ export function createLeadAnswerWorkflow(tools: LeadTools) {
         `UPSTREAM GITHUB ISSUES of the original repository, triaged against the successor\n${upstream_issues ? JSON.stringify(upstream_issues, null, 1) : 'not triaged yet'}`,
         `ISSUES\n${JSON.stringify(issues, null, 1)}`,
         `REPAIRS\n${JSON.stringify(repairs, null, 1)}`,
+        ...(memory ? [`RESTORATION MEMORY: repair attempts from OTHER inherited projects (precedents, not evidence about this one)\n${JSON.stringify(memory, null, 1)}`] : []),
         ...files.map((f: any) => (f.content ? f.content : `FILE ${f.path}: ${f.error}`)),
       ].join('\n\n');
       return { ...inputData, context, toolsUsed: used };

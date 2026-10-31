@@ -43,6 +43,7 @@ beforeAll(async () => {
 afterAll(() => modelServer.close());
 
 const engine: EngineClient = {
+  list: async () => [],
   detail: async () => ({
     full_name: 'kachayev/fn.py',
     stage: 'restoring',

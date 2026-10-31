@@ -4,6 +4,7 @@ import { createTool } from '@mastra/core/tools';
 import type { RequestContext } from '@mastra/core/request-context';
 import { z } from 'zod';
 import type { EngineClient } from './engine.ts';
+import { repairDocuments, type Memory } from './memory.ts';
 import { nonce, numberLines, truncate, untrusted } from './untrusted.ts';
 
 export const INHERITANCE_KEY = 'inheritanceId';
@@ -86,7 +87,14 @@ export function summarizeRepairs(d: any) {
   }));
 }
 
-export function buildLeadTools(engine: EngineClient) {
+/** Bring the restoration memory up to date with every inheritance the engine holds; unchanged repairs are skipped. */
+export async function refreshMemory(engine: EngineClient, memory: Memory): Promise<number> {
+  const docs = [];
+  for (const i of await engine.list()) docs.push(...repairDocuments(await engine.detail(i.id)));
+  return memory.index(docs);
+}
+
+export function buildLeadTools(engine: EngineClient, memory?: Memory) {
   const getProjectOverview = createTool({
     id: 'get-project-overview',
     description:
@@ -134,5 +142,20 @@ export function buildLeadTools(engine: EngineClient) {
     execute: async ({ action, reason }) => ({ proposed: action, reason, executed: false }),
   });
 
-  return { getProjectOverview, listIssues, listRepairs, readSourceFile, proposeAction };
+  // Only present when IE_MEMORY_DATABASE_URL is set; without it the Lead works exactly as before.
+  const searchRestorationMemory = memory
+    ? createTool({
+        id: 'search-restoration-memory',
+        description:
+          'Search repair attempts recorded in OTHER inherited projects (kept, reverted or rejected) for a failure or fix, using hybrid keyword and vector search. Use it to find precedents and known bad fixes; each hit has a repair id.',
+        inputSchema: z.object({ query: z.string(), limit: z.number().int().min(1).max(8).default(4) }),
+        execute: async ({ query, limit }, ctx) => {
+          await refreshMemory(engine, memory);
+          const hits = await memory.search(query, limit, inheritanceId(ctx));
+          return { hits: hits.map((h) => ({ ...h, excerpt: untrusted(nonce(), `REPAIR ${h.id} from ${h.repository}`, h.excerpt) })) };
+        },
+      })
+    : undefined;
+
+  return { getProjectOverview, listIssues, listRepairs, readSourceFile, proposeAction, ...(searchRestorationMemory ? { searchRestorationMemory } : {}) };
 }

@@ -8,12 +8,13 @@ import { createGroundedLeadAgent, createLeadAgent } from '../agents/lead.ts';
 import { createTriageAgent } from '../agents/triage.ts';
 import { loadConfig } from '../config.ts';
 import { engineClient } from '../engine.ts';
+import { createMemory, memoryConfig, type Memory } from '../memory.ts';
 import { ContentStripper, scrubEnvelope, scrubSentryError, scrubSentryEvent, scrubSentrySpan } from '../telemetry.ts';
 import { buildLeadTools } from '../tools.ts';
 import { createLeadAnswerWorkflow } from '../workflows/lead-answer.ts';
 import { createTriageWorkflow } from '../workflows/triage.ts';
 
-export function createMastra(cfg = loadConfig(), engine = engineClient(cfg.engineUrl), githubFetch: typeof fetch = fetch) {
+export function createMastra(cfg = loadConfig(), engine = engineClient(cfg.engineUrl), githubFetch: typeof fetch = fetch, memory: Memory | undefined = defaultMemory()) {
   const observability = cfg.sentryDsn
     ? new Observability({
         sensitiveDataFilter: true,
@@ -48,16 +49,22 @@ export function createMastra(cfg = loadConfig(), engine = engineClient(cfg.engin
     : undefined;
   return new Mastra({
     agents: {
-      leadEngineer: createLeadAgent(cfg, engine),
+      leadEngineer: createLeadAgent(cfg, engine, memory),
       leadEngineerGrounded: createGroundedLeadAgent(cfg),
       issueTriager: createTriageAgent(cfg),
     },
     workflows: {
-      answerLeadQuestion: createLeadAnswerWorkflow(buildLeadTools(engine)),
+      answerLeadQuestion: createLeadAnswerWorkflow(buildLeadTools(engine, memory)),
       triageUpstreamIssues: createTriageWorkflow(engine, cfg.githubToken, githubFetch),
     },
     ...(observability ? { observability } : {}),
   });
+}
+
+/** The restoration memory when IE_MEMORY_DATABASE_URL is set (Tiger Data / Postgres with pgvector); otherwise none. */
+function defaultMemory(): Memory | undefined {
+  const mc = memoryConfig();
+  return mc ? createMemory(mc) : undefined;
 }
 
 export const mastra = createMastra();

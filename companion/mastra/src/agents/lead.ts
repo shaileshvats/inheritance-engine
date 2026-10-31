@@ -2,6 +2,7 @@ import { Agent } from '@mastra/core/agent';
 import type { CompanionConfig } from '../config.ts';
 import { gemmaModel } from '../config.ts';
 import type { EngineClient } from '../engine.ts';
+import type { Memory } from '../memory.ts';
 import { buildLeadTools } from '../tools.ts';
 import { UNTRUSTED_RULE } from '../untrusted.ts';
 
@@ -25,14 +26,14 @@ Rules:
 - Be concise: at most about 180 words, plain markdown.`;
 }
 
-export function createLeadAgent(cfg: CompanionConfig, engine: EngineClient) {
+export function createLeadAgent(cfg: CompanionConfig, engine: EngineClient, memory?: Memory) {
   return new Agent({
     id: 'lead-engineer',
     name: 'Lead Engineer',
     description: 'Answers questions about an inherited project, choosing engine tools itself (runtimes with tool calling).',
     instructions: leadInstructions('native'),
     model: gemmaModel(cfg),
-    tools: buildLeadTools(engine),
+    tools: buildLeadTools(engine, memory),
   });
 }
 
