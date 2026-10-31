@@ -1,0 +1,78 @@
+# Continuous verification on GitHub-hosted runners (free for public repositories).
+# - rust:   clippy and the engine's unit tests (safety rules, revert rules, telemetry scrubbing, citation checks)
+# - mastra: the companion's typecheck and vitest suite
+# - replay: builds the engine, runs the bundled replay through live Docker checks on a clean machine, fails unless the
+#           behaviour probe still catches the recorded patch, and uploads the resulting Inheritance Record.
+# No model, API key or secret is used anywhere in this workflow.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.89
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test
+
+  mastra:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: companion/mastra
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.18"
+          cache: npm
+          cache-dependency-path: companion/mastra/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.89
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release
+      - name: Pull the sandbox images
+        run: docker pull -q python:3.9-slim && docker pull -q python:3.12-slim
+      - name: Start the engine (no model configured)
+        run: |
+          export IE_DATA_DIR="$RUNNER_TEMP/ie-data"
+          nohup ./target/release/inheritance-engine > "$RUNNER_TEMP/engine.log" 2>&1 &
+          for _ in $(seq 1 60); do curl -fsS http://127.0.0.1:7878/api/status > /dev/null && exit 0; sleep 1; done
+          cat "$RUNNER_TEMP/engine.log"; exit 1
+      - name: Replay the recorded catch through live checks
+        run: scripts/replay-check.sh http://127.0.0.1:7878 "$RUNNER_TEMP/inheritance-record.json"
+      - name: Engine log
+        if: always()
+        run: tail -n 200 "$RUNNER_TEMP/engine.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: replay-inheritance-record
+          path: ${{ runner.temp }}/inheritance-record.json
+          if-no-files-found: warn
