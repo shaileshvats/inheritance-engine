@@ -125,8 +125,9 @@ IE_MASTRA_URL=http://127.0.0.1:7880 cargo run --release
 
 **Sentry agent tracing.** Set `SENTRY_DSN` for the engine and the companion. Each job becomes a trace: the agent
 team's work (`gen_ai.invoke_agent`), every model call (`gen_ai.chat` with role, model, tokens, latency, outcome), and
-every sandbox run (`gen_ai.execute_tool`). Only metadata leaves the machine, and tests check this by injecting source
-code and secret-shaped strings.
+every sandbox run (`gen_ai.execute_tool`). Only metadata leaves the machine. Tests check this by injecting source code
+and secret-shaped strings, and it was verified against a real Sentry project (see `docs/partners`). Set
+`IE_TELEMETRY_AUDIT=path` to keep a local copy of exactly what is sent.
 
 **DigitalOcean.** [`deploy/digitalocean`](deploy/digitalocean/README.md) runs the whole stack (engine, companion,
 Ollama with Gemma 4, Docker sandboxes) on one Droplet, reachable only through SSH. The deployment is prepared and

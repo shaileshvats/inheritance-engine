@@ -42,7 +42,8 @@ See [partners/README.md](partners/README.md) for the full audit.
 - **Gemma: implemented.** Gemma 4 E4B runs every agent role, locally.
 - **Mastra: implemented.** Lead Engineer agent, grounded answer workflow, and upstream-issue triage workflow, with
   real-run evidence.
-- **Sentry Agent Tracing: implemented and tested offline.** It needs the owner's DSN for real traces.
+- **Sentry Agent Tracing: implemented and demonstrated** with real traces from both processes in Sentry's AI Agents
+  views. Verified to carry no content, both locally and server side.
 - **DigitalOcean: prepared and validated locally, not deployed.** It needs the owner's sign-in and credits.
 - **Everything else:** not integrated.
 

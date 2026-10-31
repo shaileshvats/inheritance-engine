@@ -112,6 +112,20 @@ couldn't render Gemma 4's chat template with tools, so the companion probes the 
 isn't available, it uses a Mastra workflow that calls the same tools deterministically and has Gemma answer with
 structured output. Same tools, same rules, and it works on today's runtime.
 
+## Watching the agents work, without leaking the code
+
+Both the Rust engine and the Mastra companion send traces to Sentry. Each investigation shows up as an agent run: the
+team's job, every Gemma call with its role, tokens and latency, and every sandbox run as a tool call. In Sentry's
+Agent Activity view, the 8.78-minute investigation of one repository breaks down into a 17.85 s plan step and a
+3.39-minute Historian call. The tests "tool" is shown in red because the inherited code really did fail.
+
+What Sentry *doesn't* see matters as much. Click any model call and the input panel says "No input for this span". No
+prompt, no response and no line of inherited source leaves the laptop. The engine enforces this in the transport
+itself, and I verified it twice: by auditing every payload before it was sent, and by querying Sentry's stored spans
+for content attributes, which returned zero. Getting there exposed a real gap: Mastra's exporter streams spans through
+a path that skips the usual Sentry scrubbing hook. The content was already gone by then, but the check now lives where
+nothing can bypass it.
+
 ## The engine, not the model, has the last word
 
 Gemma 4 E4B runs comfortably on a 16 GB laptop, and it's genuinely useful. In my runs it wrote correct fixes and caught
@@ -175,9 +189,10 @@ all, and probes only test what the Tester thought to probe. A full run takes 15â
 - **Best Use of Gemma**: Gemma 4 runs every agent role, locally.
 - **Best Use of Mastra**: the Lead Engineer agent with engine tools, a grounded answer workflow, and the upstream-issue
   triage workflow, all over Gemma, all used by the product.
-- *Sentry Agent Tracing and DigitalOcean:* <!-- Claim ONLY after a real trace screenshot / a real Droplet run exists. -->
-  The tracing and the deployment are built and tested locally. I'll list these only if real traces and a real Droplet
-  run make it into this post.
+- **Best Use of Sentry Agent Tracing**: real traces from both the Rust engine and the Mastra companion, in Sentry's AI
+  Agents views, with tokens and latency per call, and verified to carry no prompts or code.
+- *DigitalOcean:* <!-- Claim ONLY after a real Droplet run exists. --> The Droplet deployment is built and validated
+  locally but has not been deployed, so I'm not claiming it.
 
 Everything else was evaluated and not integrated; the repo has a per-category audit (`docs/partners`).
 

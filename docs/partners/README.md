@@ -13,7 +13,7 @@ Deadline: 2026-10-31 23:59 PDT. A submission can win only once, and writing qual
 | --- | --- | --- |
 | Gemma (featured) | **Implemented** | Done |
 | Mastra | **Implemented**: Lead Engineer agent + two workflows, used by the product; real runs recorded | Done |
-| Sentry Agent Tracing | **Implemented, not yet demonstrated**: engine and companion instrumented, tested offline | Needs the owner's free Sentry DSN to capture real traces |
+| Sentry Agent Tracing | **Implemented and demonstrated**: real traces from both processes, shown in Sentry's AI Agents views | Done |
 | DigitalOcean (featured) | **Prepared, not deployed**: compose stack and images built locally | Needs the owner to sign in and confirm credits; nothing billable created |
 | Temporal | Not implemented; SQLite checkpoints do the same job today | Possible but high risk: about 1.5 days, second runtime |
 | Auth0 for AI Agents | Not implemented, real fit (GitHub actions on the user's behalf, with approval) | Risky: 1–2 days plus Auth0 tenant and GitHub connection setup |
@@ -63,20 +63,38 @@ Deadline: 2026-10-31 23:59 PDT. A submission can win only once, and writing qual
 - **Limits:** native tool calling has not been exercised with Gemma 4 on this machine (runtime limitation above).
   Mastra storage is in memory, since the engine persists results. A 4B model sometimes repeats a heading.
 
-### Sentry Agent Tracing — Implemented, awaiting a DSN for live evidence
+### Sentry Agent Tracing — Implemented and demonstrated
 - **Requirement:** "Show your agent's work: how it's set up, how it performs (latency, tokens, cost)," what you found
   and debugged, with traces or screenshots in the write-up.
-- **In the product:** with `SENTRY_DSN` set, the engine sends one transaction per job (`gen_ai.invoke_agent`), with
-  `gen_ai.chat` spans per model call (role, model, input/output/total tokens, latency, ok/error class) and
-  `gen_ai.execute_tool` spans per sandbox run (install, syntax, tests, behaviour probe). The companion uses
-  `@mastra/sentry` for its agent runs, model generations and tool calls.
-- **Privacy:** purposes and errors are reduced to fixed categories. A scrubbing transport (engine) and
-  `beforeSendTransaction` plus a span processor (companion) keep only allowlisted metadata keys. `cargo test
-  telemetry` injects source code, a file path and an AWS-key-shaped string, then checks the captured envelope contains
-  tokens and model names and none of that content.
-- **Token usage** is now recorded for every model call and shown in the Agent trace (from the OpenAI-compatible
-  `usage` field, or Ollama's eval counts). Cost is $0 per call: the model runs locally.
-- **Remaining:** a real Sentry project. The DSN is the owner's to create. Then run one job and capture the trace screenshot.
+- **Setup:** one Sentry project (Node.js platform). Both processes use its DSN through native SDKs: the Rust engine via
+  the `sentry` crate, the companion via `@mastra/sentry` / `@sentry/node`. No OTLP. The DSN lives only in the git-ignored
+  local `.env`.
+- **What the engine sends:** one transaction per job (`gen_ai.invoke_agent`, agent name "Inheritance Engine team"), a
+  `gen_ai.chat` span per model call (role, model, input/output/total tokens, latency, ok/error class), and a
+  `gen_ai.execute_tool` span per sandbox run (install, syntax, tests, behaviour probe). The companion sends Mastra's
+  agent runs, model generations and workflow steps.
+- **Verified in Sentry (2026-10-28 runs, checked 2026-10-31):**
+  - Spans arrived from both SDKs. Rust: `gen_ai.invoke_agent`, `gen_ai.chat`, `gen_ai.execute_tool`. Node: agent,
+    model, workflow and processor spans.
+  - **AI Agents Overview** for the project (7 days): 24 LLM calls to `google/gemma-4-e4b`, 53,669 tokens, and tool calls
+    including the engine's `sandbox.syntax` (screenshot `06-sentry-ai-agents.jpg`).
+  - The engine's `inheritance.investigate` trace: 8 spans, 8.78 min, with the Historian at 3.39 min
+    (`07-sentry-engine-trace-waterfall.jpg`). Its **Agent Activity** tab shows the engine as an agent with per-call
+    tokens. For example plan: 1.9K in + 249 out, Input "No input for this span"
+    (`08-sentry-agent-activity-no-input.jpg`).
+- **Privacy, verified twice:**
+  - **Local:** an opt-in transport-level audit (`IE_TELEMETRY_AUDIT`) of every payload either process handed to Sentry.
+    It contained no prompts, responses, source keywords, repository file names, issue text, secret patterns or local
+    paths.
+  - **Server side:** a query over the project's stored spans found **0** spans with any of 12 content attributes
+    (`gen_ai.request.messages`, `gen_ai.response.text`, `gen_ai.agent.prompt`, `gen_ai.input/output.messages`,
+    `gen_ai.tool.input/output`, `input`, `output`, `http.url`, `url.full`, `gen_ai.prompt`).
+  - **Sent by design:** the public GitHub repository name (`ie.repository`), the opaque inheritance id, and fixed
+    category labels.
+- **Debugging found along the way:** the Mastra exporter streams agent/model spans as `span` envelope items that bypass
+  `beforeSendTransaction`. Payloads were already clean, thanks to the span processor, but enforcement now sits in the
+  transport of both processes for every item type.
+- **Cost:** Sentry's "Estimated Cost" panel is empty. The model runs locally, with no per-token price, so the real cost is $0.
 
 ### DigitalOcean — Prepared, not deployed
 - **Requirement:** "Build or deploy your project on DigitalOcean": host an app or agent, or run an open-weight model on a GPU Droplet.
