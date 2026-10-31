@@ -1,0 +1,30 @@
+{
+  "name": "inheritance-engine-temporal",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Optional Temporal companion for Inheritance Engine: one durable workflow that takes a repository from inheritance to Inheritance Record, surviving engine, worker and model restarts.",
+  "type": "module",
+  "license": "SEE LICENSE IN ../../LICENSE",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "worker": "node src/worker.ts",
+    "inherit": "node src/start.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@temporalio/activity": "1.24.0",
+    "@temporalio/client": "1.24.0",
+    "@temporalio/common": "1.24.0",
+    "@temporalio/worker": "1.24.0",
+    "@temporalio/workflow": "1.24.0"
+  },
+  "devDependencies": {
+    "@temporalio/testing": "1.24.0",
+    "@types/node": "26.6.5",
+    "typescript": "7.0.2",
+    "vitest": "5.0.5"
+  }
+}
