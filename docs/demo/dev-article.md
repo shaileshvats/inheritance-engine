@@ -12,6 +12,20 @@ The fix was wrong. What caught it was the library itself: the original author's 
 
 That is the idea behind **Inheritance Engine**: when you inherit software from someone who has moved on, the original gets a vote on what "restored" means.
 
+## The 90-second version
+
+**What it does:** Inheritance Engine helps you investigate, restore, verify and preserve abandoned software.
+
+**Why it's different:** the original's observed behaviour counts as evidence. A patch isn't trusted just because the existing tests pass.
+
+**The strongest demonstration:** on fn.py, a Gemma patch approved by the Gemma Reviewer passed all 126 existing tests, but behaviour probes comparing it with the original on Python 3.9 exposed a regression, and the engine reverted it ([the catch](#the-catch-step-by-step), [demo](#demo)).
+
+**Reproducible:** a [replay](#try-it-yourself-without-a-model) sends the recorded patch through the live checks, with no model call.
+
+**What it doesn't claim:** I, not the AI, flagged the `*args` behaviour; the Tester turned my note into the first probe. Neither inherited repository is fully restored yet ([limitations](#limitations-honestly)).
+
+**Why open AI:** Gemma 4 E4B runs every agent locally; Mastra runs the Lead Engineer chat and issue triage ([how I built it](#how-i-built-it)).
+
 ## What I Built
 
 Somewhere on GitHub there is a library that does exactly what you need. Its author moved on years ago, and the code quietly stopped working. Nobody deleted it. The runtime it was written for just went away.
