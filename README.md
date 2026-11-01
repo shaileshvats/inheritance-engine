@@ -72,8 +72,9 @@ What is recorded and what is live:
 | | The engine's decision (reverted) and a new Inheritance Record |
 
 It needs Rust, Git, Docker, and network access to GitHub and the Python package index. No model or GPU is needed.
-With the Docker images already pulled it takes about 20 seconds; the first run also pulls `python:3.12-slim` and
-`python:3.9-slim`. Replays are labelled as replays in the UI and never commit recorded output.
+The first `cargo run --release` compiles the engine and its dependencies from source, which took about 13 minutes on
+the 16 GB development laptop. After that, with the Docker images already pulled, a replay takes about 20 seconds; the
+first run also pulls `python:3.12-slim` and `python:3.9-slim`. Replays are labelled as replays in the UI and never commit recorded output.
 
 ## Quick start (macOS, Linux)
 
