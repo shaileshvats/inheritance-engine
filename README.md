@@ -9,6 +9,9 @@ no longer runs, repairs it in a traceable successor, and proves each repair with
 evidence in a portable Inheritance Record.
 
 Built for the DEV Hacktoberfest 2026 Week 4 challenge, *Ghost in the Machine*.
+**[▶ Watch the demo video](https://cdn.jsdelivr.net/gh/shaileshvats/inheritance-engine@3a58ea9304d4a9fb6f457b56643911d14d5e68f5/docs/demo/video/inheritance-engine-demo.mp4)** (real footage, captioned; [how it was made](docs/demo/video/README.md)) · **[Read the DEV write-up](https://dev.to/shaileshvats2004/inheritance-engine-resurrecting-abandoned-code-with-a-local-gemma-team-where-the-original-gets-a-4i0n)**
+
+![A Reviewer-approved patch that kept all 126 tests passing, caught by the behaviour probe against the original and reverted](docs/demo/screenshots/12-replay-probe-catch.jpg)
 
 > Status: hackathon MVP (v0.1.0). It works end to end on real repositories, and it has real limits; see
 > [What it can't do yet](#what-it-cant-do-yet). Not production software.
@@ -20,7 +23,7 @@ Built for the DEV Hacktoberfest 2026 Week 4 challenge, *Ghost in the Machine*.
 | **Hunter** | Search GitHub by problem ("I need lazy streams in Python") or by curiosity. Results show evidence signals: history, present usefulness, evolution potential, cautions. They are not a score. | GitHub API + Hunter agent |
 | **Inherit** | Bare clone kept **read-only**; successor clone on its own branch with **push disabled**. Original commit and license recorded. | Engine |
 | **Investigate** | File tree, languages, entry points, import graph, likely central components ("mother scripts"), a scan for APIs that modern runtimes removed, and a **trust passport** (install scripts, network/filesystem/process/dynamic-code use, secrets, dependencies). | Engine (deterministic) |
-| **Baseline** | Dependencies installed and tests run in Docker: network off, read-only rootfs, capabilities dropped. | Engine + Docker |
+| **Baseline** | Dependencies installed (the one networked step), then tests run in Docker: network off, read-only rootfs, capabilities dropped. | Engine + Docker |
 | **Understand** | The Lead plans and hands each specialist only the files it needs. The Historian reconstructs purpose and architecture with citations. The Restorer diagnoses problems. The Reviewer challenges both. The Lead writes the summary. | Gemma agents |
 | **Restore** | Patch, then engine guards, then independent review, then Docker tests, then a behaviour probe against the original, then commit or revert. If tests still fail, the Restorer re-diagnoses from the new failure. | Gemma agents + engine |
 | **Preserve** | `INHERITANCE.md` is committed to the successor, and a versioned JSON Inheritance Record is exported. | Engine |
@@ -88,10 +91,11 @@ cargo run --release
 # → http://127.0.0.1:7878
 ```
 
-Using Ollama instead:
+Using Ollama instead (the Ollama adapter was smoke-tested with Qwen3 4B; the demo runs used LM Studio):
 
 ```bash
-IE_MODEL_PROVIDER=ollama IE_MODEL_ENDPOINT=http://127.0.0.1:11434 IE_MODEL=gemma3:4b cargo run --release
+ollama pull gemma4:e4b
+IE_MODEL_PROVIDER=ollama IE_MODEL_ENDPOINT=http://127.0.0.1:11434 IE_MODEL=gemma4:e4b cargo run --release
 ```
 
 All configuration is optional and lives in environment variables (see [`.env.example`](.env.example)). The defaults are
@@ -222,9 +226,11 @@ are documented with their actual results in [`docs/demo`](docs/demo/README.md).
   adapters also speak Ollama natively, and any OpenAI-compatible server works. Development smoke tests also used Qwen3 4B
   through Ollama.
 - **Per-agent models:** for example `IE_MODEL_REVIEWER=google/gemma-4-12b-qat` for a stronger independent reviewer.
-- **Orchestration:** the core pipeline is plain Rust in this repository. The optional Mastra companion runs the Lead
-  Engineer agent and the upstream-issue triage workflow. Temporal was considered and not used; see
-  [`docs/decisions`](docs/decisions/README.md).
+- **Orchestration:** the core pipeline is plain Rust in this repository, with SQLite checkpoints for durable jobs. The
+  optional Mastra companion runs the Lead Engineer agent and the upstream-issue triage workflow, and the optional
+  Temporal companion chains whole runs durably on top of the engine's jobs; see [`docs/decisions`](docs/decisions/README.md).
+- **Partner technologies:** what each one does here and the evidence for it are in
+  [`docs/demo/partners-2026-10-31.md`](docs/demo/partners-2026-10-31.md).
 
 ## What it can't do yet
 

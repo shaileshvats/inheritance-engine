@@ -1,6 +1,8 @@
 # Partner category audit (HF26 Week 4)
 
-Audited on 2026-10-28, updated after the Mastra and Sentry work and again on 2026-10-31 for a zero budget, against the official category descriptions on the [HF26 Challenge Hub](https://dev.to/challenges/hf26)
+Audited on 2026-10-28, updated after the Mastra and Sentry work, again on 2026-10-31 for a zero budget, and again on
+2026-10-31 after the Temporal, Tiger Data and GitHub Actions work (full log and evidence:
+[`docs/demo/partners-2026-10-31.md`](../demo/partners-2026-10-31.md)), against the official category descriptions on the [HF26 Challenge Hub](https://dev.to/challenges/hf26)
 and the code in this repository. The official rule is: *"Use only partner tech your project actually uses."*
 A category is marked **Implemented** only when the code uses the technology in the product and there is evidence
 to show for it.
@@ -15,17 +17,18 @@ Deadline: 2026-10-31 23:59 PDT. A submission can win only once, and writing qual
 | Mastra | **Implemented**: Lead Engineer agent + two workflows, used by the product; real runs recorded | Done |
 | Sentry Agent Tracing | **Implemented and demonstrated**: real traces from both processes, shown in Sentry's AI Agents views | Done |
 | DigitalOcean (featured) | **Not pursued**: zero budget, and no DigitalOcean credits were offered | No. A Droplet would be paid; nothing was created |
-| Temporal | Not implemented; SQLite checkpoints do the same job today | Possible but high risk: about 1.5 days, second runtime |
+| Temporal | **Implemented and demonstrated**: optional `companion/temporal` workflow over the engine's jobs; survived a worker kill mid-job | Done |
 | Auth0 for AI Agents | Not implemented, real fit (GitHub actions on the user's behalf, with approval) | Risky: 1–2 days plus Auth0 tenant and GitHub connection setup |
 | SerpApi | **Implemented and demonstrated**: Hunter web discovery + cited web research for the agents, on the free plan | Done |
 | Ultramarine (Paper Instruments) | Not implemented; it is a hosted model behind an OpenAI-compatible adapter | Yes, a few hours. Conflicts with the local-only default; opt-in comparison only |
 | Backboard | Not implemented, weak fit | Possible, low value |
-| MongoDB Atlas / Tiger Data | Not implemented; no real need yet | Possible (restoration-recipe retrieval), questionable value with so few runs |
+| Tiger Data | **Implemented (self-hosted)**: restoration memory on Tiger Data's open-source image, pgvector + pgvectorscale, hybrid search for the Lead | Done; small corpus (26 attempts) |
+| MongoDB Atlas | Not implemented; would duplicate the restoration memory | Not pursued |
 | ElevenLabs | Not implemented | Demo narration qualifies officially, but it isn't a product feature |
 | Render (featured) | Not implemented; poor fit for the full engine | Only as a hosted Hunter-only front end; the full engine cannot run there |
 | .tech Domain | **Not pursued** | The rule needs the project live on the domain, and there is no free host that can run it |
 | Browserbase | Not implemented | No: the demo repository has no web UI to test |
-| GitHub Copilot | Not used | No, not genuinely: Copilot was not used to build this |
+| GitHub Copilot | **Entered on its GitHub Actions option only**: CI runs every test suite and the replay end to end. Copilot itself was not used | Done |
 | Entire | Not used | No for past work. Future sessions could be captured |
 | TabPFN (featured) | Not implemented | No: there's no real historical dataset, and fabricating one is not acceptable |
 | Tinker (featured) | Not implemented | No: needs a dataset, a fine-tune, and a measured improvement over a baseline |
@@ -58,8 +61,8 @@ Deadline: 2026-10-31 23:59 PDT. A submission can win only once, and writing qual
   upstream issues, 8 triaged. #91 "ImportError: cannot import name Iterable from collections" is *addressed*, citing
   repair `rep_84e85726…` and commit `ed0b4e499d`, both verified by the engine. 7 are still relevant. The same result
   came from the UI-started job. See also screenshot `05-mastra-upstream-triage.jpg` and the agent trace entries with
-  provider `mastra`. There are 19 vitest tests (citation rule, telemetry scrubbing, request guards, both workflows
-  against a local fixture model, the HTTP server).
+  provider `mastra`. There are 24 vitest tests, 26 with a memory database (citation rule, telemetry scrubbing, request
+  guards, both workflows against a local fixture model, the HTTP server, the restoration memory).
 - **Limits:** native tool calling has not been exercised with Gemma 4 on this machine (runtime limitation above).
   Mastra storage is in memory, since the engine persists results. A 4B model sometimes repeats a heading.
 
@@ -105,13 +108,19 @@ Deadline: 2026-10-31 23:59 PDT. A submission can win only once, and writing qual
 - **What exists instead:** a generic self-host compose stack in `deploy/self-host`, validated locally only. It is not
   a DigitalOcean deployment and is not presented as one.
 
-### Temporal — possible, not recommended
+### Temporal — Implemented and demonstrated
 - **Requirement:** "Wrap [your agent] in a Temporal workflow so it survives failures," retries flaky tool calls, and
   picks up where it left off.
-- **Status:** the engine already survives failures with SQLite checkpoints. It was killed mid-run and resumed in the demo.
-  Temporal has no stable Rust SDK, so integrating it means a TypeScript or Python worker that drives the pipeline steps
-  as activities over HTTP, plus a local Temporal dev server.
-- **Assessment:** genuine but duplicative, and the riskiest change to the core with 3–4 days left.
+- **Earlier assessment (2026-10-28):** the engine's own SQLite checkpoints already make each job durable, so Temporal
+  looked duplicative. What was missing was anything that chains jobs, waits out a service that is down, or re-runs a
+  failed job, and that is what the companion adds.
+- **In the product:** [`companion/temporal`](../../companion/temporal/README.md), an optional TypeScript worker (Temporal
+  SDK 1.24) with one workflow, `inheritAndRestore`, whose activities drive the engine over its loopback HTTP API. Only
+  ids and statuses enter Temporal's history. The Temporal dev server runs locally.
+- **Evidence:** 11 tests (4 on Temporal's time-skipping server), run in CI. A live run on smokesignal on 2026-10-31
+  where the worker was killed with `SIGKILL` mid-restore and a new worker resumed the same engine job; 19 min 17 s,
+  86 events (`docs/demo/screenshots/14-temporal-durable-workflow.jpg`). Two further heartbeat timeouts on the new worker
+  are unexplained; see the log.
 
 ### Auth0 for AI Agents — possible, risky
 - **Requirement:** sign users in to an agent; call tools on a user's behalf with Token Vault; human approval for risky
@@ -154,11 +163,21 @@ Deadline: 2026-10-31 23:59 PDT. A submission can win only once, and writing qual
 - **Possible use:** an opt-in second-opinion Reviewer using the existing OpenAI-compatible adapter, with a cost report.
   It's a hosted model, so it only works outside `local_only` and never touches private repositories.
 
-### Backboard, MongoDB Atlas, Tiger Data
-- **Backboard** (memory/RAG, multi-model API): there's no current need. Project memory is local by design.
-- **Atlas / Tiger Data** (vector or hybrid search): the genuine future use is a shared, opt-in library of verified
-  restoration recipes for the Restorer to retrieve. That needs many more runs to be meaningful. If built, choose one,
-  not both.
+### Tiger Data — Implemented (self-hosted)
+- **Requirement:** "Store embeddings with pgvector, run hybrid keyword and vector search for an agent, or let an agent
+  manage a database through Tiger MCP."
+- **In the product:** the restoration memory in [`companion/mastra`](../../companion/mastra/README.md#restoration-memory-optional-tiger-data):
+  every recorded repair attempt, embedded by a local model, stored in Postgres with pgvector and pgvectorscale (DiskANN)
+  on Tiger Data's open-source `timescaledb-ha` image, and searched by the Lead Engineer with hybrid keyword + vector
+  ranking. Database and embeddings must be loopback, so it is self-hosted, not Tiger Cloud.
+- **Evidence:** 7 tests (2 against a real database, also in CI as a service container); 26 attempts from two projects;
+  a Lead answer citing real repair ids from another project (`docs/demo/screenshots/15-lead-restoration-memory.jpg`).
+  Gemma's summary of *why* a precedent failed was sometimes wrong; the ids are there to check.
+
+### Backboard, MongoDB Atlas
+- **Backboard** (memory/RAG, multi-model API): hosted memory would send repository text off the machine, and would
+  duplicate the restoration memory.
+- **MongoDB Atlas:** a second vector store would duplicate the restoration memory.
 
 ### ElevenLabs
 - "Generate narration for your demo" is an officially listed use. It wouldn't be a product feature. Your call.
@@ -174,5 +193,8 @@ Deadline: 2026-10-31 23:59 PDT. A submission can win only once, and writing qual
 - **TabPFN:** predicting "restorability" would need real labelled outcomes from many restorations; we have three runs.
 - **Tinker:** needs a training set, a fine-tune and a measured improvement over a baseline.
 - **Browserbase:** needs an inherited project with a web UI. That's a different demo.
-- **GitHub Copilot, Entire:** neither was used to build this project, and claiming them retroactively would be false.
+- **Entire:** sharing the build sessions conflicts with the rule not to upload agent-session transcripts.
+- **GitHub Copilot:** Copilot itself was not used to build this project, and that is not claimed. The category also
+  accepts "automate your project with GitHub Actions"; [`ci.yml`](../../.github/workflows/ci.yml) does that (all test
+  suites plus the replay end to end on a clean runner), and the entry rests on that option only.
 - **Arduino:** no UNO Q available. **Qualcomm:** no published requirements found.

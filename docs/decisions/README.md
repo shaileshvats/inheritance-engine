@@ -26,6 +26,11 @@ finished model calls. Every pipeline step checks its checkpoint artifact, which 
 services to run. Temporal would be the right tool once restoration runs on remote workers. The Temporal category is
 **not claimed**.
 
+**Update (2026-10-31).** The checkpoints stayed: each engine job is still durable on its own. What they don't do is
+chain jobs, wait out a model or Docker that is down, or re-run a failed job, so an optional Temporal companion
+(`companion/temporal`) now does exactly that on top of the engine's HTTP API, with a local dev server. The core needs
+nothing from it. The Temporal category is now claimed on that basis.
+
 ## D4 — LM Studio as the default runtime, Ollama supported
 
 Ollama 0.17.7 was installed on the development machine. Its registry refused to serve any current model to that client
@@ -77,3 +82,8 @@ only, no spending without approval"), and none were integrated in this build. Cl
 **Update (2026-10-31).** Mastra, Sentry Agent Tracing and SerpApi were later integrated for real and are claimed; see
 [`docs/partners`](../partners/README.md) for the evidence. DigitalOcean and .tech were not pursued because the project
 has a zero budget.
+
+**Update (2026-10-31, later).** Temporal (durable runs), Tiger Data (the restoration memory, self-hosted) and GitHub
+Actions CI were added and are claimed; the GitHub Copilot category is entered only on its "automate your project with
+GitHub Actions" option, and Copilot itself was not used. See
+[`docs/demo/partners-2026-10-31.md`](../demo/partners-2026-10-31.md).

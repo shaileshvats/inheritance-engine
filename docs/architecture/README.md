@@ -81,7 +81,8 @@ Small local models are useful but fallible. The engine enforces the parts that m
 Jobs and steps live in SQLite. Each pipeline step first checks its checkpoint artifact, so `resume` on an interrupted
 job (for example after a restart, which marks running jobs `interrupted`) continues without repeating finished model
 calls or test runs. Pause and cancel are honoured between steps. This is deliberately simpler than a workflow engine
-such as Temporal; the step/checkpoint shape maps onto one if long-running cloud workers are added later.
+such as Temporal. The optional Temporal companion (`companion/temporal`) sits on top rather than replacing it: it
+chains whole runs, waits out services that are down and re-runs failed jobs, while each job keeps its own checkpoints.
 
 ## Model adapters
 
