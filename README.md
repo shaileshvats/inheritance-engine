@@ -9,7 +9,7 @@ no longer runs, repairs it in a traceable successor, and proves each repair with
 evidence in a portable Inheritance Record.
 
 Built for the DEV Hacktoberfest 2026 Week 4 challenge, *Ghost in the Machine*.
-**[▶ Watch the demo video](https://cdn.jsdelivr.net/gh/shaileshvats/inheritance-engine@3a58ea9304d4a9fb6f457b56643911d14d5e68f5/docs/demo/video/inheritance-engine-demo.mp4)** (real footage, captioned; [how it was made](docs/demo/video/README.md)) · **[Read the DEV write-up](https://dev.to/shaileshvats2004/inheritance-engine-resurrecting-abandoned-code-with-a-local-gemma-team-where-the-original-gets-a-4i0n)**
+**[▶ Watch the demo video](https://cdn.jsdelivr.net/gh/shaileshvats/inheritance-engine@eaf8096ff6ff2c47db95c88e2ad5a98da8b31083/docs/demo/video/inheritance-engine-demo-v2.mp4)** (real footage, captioned; [how it was made](docs/demo/video/README.md)) · **[Read the DEV write-up](https://dev.to/shaileshvats2004/inheritance-engine-resurrecting-abandoned-code-with-a-local-gemma-team-where-the-original-gets-a-4i0n)**
 
 ![A Reviewer-approved patch that kept all 126 tests passing, caught by the behaviour probe against the original and reverted](docs/demo/screenshots/12-replay-probe-catch.jpg)
 

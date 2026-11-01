@@ -28,11 +28,9 @@ Inheritance Engine is a workbench for inheriting that kind of software. It treat
 
 ## Demo
 
-[![Demo video: real footage of the app. Click to play.](https://raw.githubusercontent.com/shaileshvats/inheritance-engine/3a58ea9304d4a9fb6f457b56643911d14d5e68f5/docs/demo/video/poster.jpg)](https://cdn.jsdelivr.net/gh/shaileshvats/inheritance-engine@3a58ea9304d4a9fb6f457b56643911d14d5e68f5/docs/demo/video/inheritance-engine-demo.mp4)
+[![Demo video: real footage of the app. Click to play.](https://raw.githubusercontent.com/shaileshvats/inheritance-engine/eaf8096ff6ff2c47db95c88e2ad5a98da8b31083/docs/demo/video/poster-v2.jpg)](https://cdn.jsdelivr.net/gh/shaileshvats/inheritance-engine@eaf8096ff6ff2c47db95c88e2ad5a98da8b31083/docs/demo/video/inheritance-engine-demo-v2.mp4)
 
-**[▶ Watch the 3½-minute demo](https://cdn.jsdelivr.net/gh/shaileshvats/inheritance-engine@3a58ea9304d4a9fb6f457b56643911d14d5e68f5/docs/demo/video/inheritance-engine-demo.mp4)** (MP4, no audio). It is real footage of the app running on my laptop, driven by a script in headless Chrome. Corner badges mark what is live, what is stored from earlier real runs, what is a replay, the two Sentry screenshots, and the one fast-forwarded wait. [How it was recorded and edited](https://github.com/shaileshvats/inheritance-engine/blob/main/docs/demo/video/README.md).
-
-**The video predates three integrations.** It was recorded before I added the Temporal workflow, the Tiger Data restoration memory and the GitHub Actions CI, so it doesn't show them. Their evidence is in [their own sections below](#temporal-an-inheritance-that-finishes-while-you-sleep): screenshots from real runs and a public CI run.
+**[▶ Watch the 5-minute demo](https://cdn.jsdelivr.net/gh/shaileshvats/inheritance-engine@eaf8096ff6ff2c47db95c88e2ad5a98da8b31083/docs/demo/video/inheritance-engine-demo-v2.mp4)** (MP4, no audio). It is real footage of the app running on my laptop, driven by a script in headless Chrome. The main story was recorded on October 31; the last part, recorded on November 1, shows the Temporal workflow, the restoration memory and GitHub Actions. Corner badges mark what is live, what is stored from earlier real runs, what is a replay, the two Sentry screenshots, and the fast-forwarded waits. [How it was recorded and edited](https://github.com/shaileshvats/inheritance-engine/blob/main/docs/demo/video/README.md).
 
 The demo inherits [kachayev/fn.py](https://github.com/kachayev/fn.py), "Functional programming in Python" (Apache-2.0, about 3.4k stars, last commit on its default branch in October 2014). On Python 3.12 its tests don't even start:
 
@@ -247,7 +245,6 @@ Every round of repairs also ends with an `INHERITANCE.md` committed to the succe
 - **Web research for obscure projects is often irrelevant.** The engine can check that a source exists, not that it's relevant. For smokesignal, the "documentation" Gemma found was about Python's `signal` module.
 - **The restoration memory is young.** It holds 26 attempts from two projects. Its retrieval is checkable, but the Lead's summary of a precedent can misstate why it failed, so treat it as a lead, not evidence.
 - **The Temporal run had unexplained hiccups.** After the deliberate crash, two more heartbeat timeouts happened on a healthy worker. They were retried automatically and no engine job ran twice, but I haven't proven their cause.
-- **The new integrations aren't in the video.** The video was recorded before Temporal, the restoration memory and CI were added; their screenshots come from real runs on October 31.
 - **Probes only test what the Tester thought to probe**, and a 4B model writes wrong patches. The engine catches many, not all. A full run takes 15–25 minutes on a laptop.
 - Verification works for Python and Node.js, and only for public GitHub repositories. Replays exist for one recorded case so far.
 - **Docker isn't a perfect security boundary.** The sandbox reduces risk; it doesn't remove it. Dependency installation has network access, and native mode, if you choose it, has little isolation.
