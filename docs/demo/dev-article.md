@@ -1,6 +1,6 @@
 ---
 title: "Inheritance Engine: resurrecting abandoned code with a local Gemma team, where the original gets a vote"
-published: false
+published: true
 tags: devchallenge, hf26challenge, opensource, ai
 ---
 
@@ -43,6 +43,11 @@ agent in it runs on **Gemma 4, on my laptop**.
 **[▶ Watch the 3½-minute demo](https://cdn.jsdelivr.net/gh/shaileshvats/inheritance-engine@3a58ea9304d4a9fb6f457b56643911d14d5e68f5/docs/demo/video/inheritance-engine-demo.mp4)** (MP4, no audio). It is real footage of the app running on my laptop, driven by
 a script in headless Chrome. Corner badges mark what is live, what is stored from earlier real runs, what is a replay,
 the two Sentry screenshots, and the one fast-forwarded wait. [How it was recorded and edited](https://github.com/shaileshvats/inheritance-engine/blob/main/docs/demo/video/README.md).
+
+**The video predates three integrations.** It was recorded before I added the Temporal workflow, the Tiger Data
+restoration memory and the GitHub Actions CI, so it doesn't show them. Their evidence is in
+[their own sections below](#temporal-an-inheritance-that-finishes-while-you-sleep): screenshots from real runs and a
+public CI run.
 
 The demo inherits [kachayev/fn.py](https://github.com/kachayev/fn.py), "Functional programming in Python" (Apache-2.0,
 about 3.4k stars, last commit on its default branch in October 2014). On Python 3.12 its tests don't even start:
@@ -110,6 +115,45 @@ Every check in that chain exists because a real run needed it:
 
 ![The Reviewer challenging the Historian's findings, with the engine's citation checks](https://raw.githubusercontent.com/shaileshvats/inheritance-engine/main/docs/demo/screenshots/03-archaeology-reviewer.jpg)
 
+## Best Use Case: the dependency nobody maintains anymore
+
+Picture a team whose service imports a small Python library. It works and it's well tested, but its maintainer
+stopped committing years ago. Then the team upgrades Python and the library breaks. In fn.py's case the test suite
+can't even start: `ImportError: cannot import name 'Iterable' from 'collections'`. Nobody is left upstream to fix it,
+and rewriting the library means rediscovering every decision its author made.
+
+That's the job Inheritance Engine is built for, and fn.py is the real example:
+
+1. **Investigate before touching anything.** The engine keeps the original read-only at its last commit. Gemma agents
+   read the code and the git history to work out what the author intended, and the engine re-reads every line they
+   cite. It also picks the newest runtime the original still works on (Python 3.9) so the author's code can serve as
+   the reference.
+2. **Let the model propose, and don't take its word for it.** Gemma proposed a fix. A second Gemma agent reviewed it
+   and approved it. All 126 existing tests passed.
+3. **Ask the original.** None of those tests called `@curried` on a function with `*args`. The behaviour probes did.
+   They ran the same calls against the author's code on Python 3.9 and against the patched successor on 3.12. The
+   original returned `(1, 2)` and the successor raised `NameError`.
+4. **Revert, and keep the evidence.** The engine threw the patch out. The Inheritance Record keeps the attempt anyway,
+   along with the approving review, the passing tests and the probe that failed. The original author's name, commit and
+   licence are recorded next to it.
+
+**Who it helps:** teams stuck on an abandoned dependency, people who adopt or fork an orphaned project, and reviewers
+who later need to know why the code changed and what evidence was behind each change.
+
+**Why it matters:** in real maintenance, "the tests pass" is often the only evidence anyone has, and old test suites
+rarely cover the behaviour downstream code relies on. A plausible fix that keeps the suite green can quietly change
+results for every caller.
+
+**How it differs from asking an AI to fix the repo:** a coding assistant usually stops at green tests. Here the model
+never has the last word. Its claims are checked against the files, its fixes run in a restricted Docker sandbox, a
+person's finding outranks a green suite, and the original author's code decides what "still works" means. A rejected
+fix is kept on record too.
+
+**Where it falls short:** probes only cover what the Tester thinks to check, and a small local model writes wrong
+fixes often. The engine only handles public Python and Node.js repositories, and the original has to run on some
+older runtime to act as the reference. fn.py itself is still *restoring*. This doesn't replace a maintainer. It makes
+inheriting a project safer and easier to audit.
+
 ## Code
 
 {% embed https://github.com/shaileshvats/inheritance-engine %}
@@ -146,7 +190,8 @@ vectors and no shell; a Docker sandbox where every container gets a read-only ro
 dropped, `no-new-privileges` and memory, CPU and process limits, and tests and probes also run with `--network none`
 as a non-root user (dependency installation is the one networked step); checkpointed jobs that survive a restart; and a vanilla JS UI with no build step. **61 Rust tests**
 cover the safety rules (path traversal, push disabled, original untouched, fabricated citations, the revert rules,
-telemetry scrubbing, web citation checks), plus 19 for the Mastra companion.
+telemetry scrubbing, web citation checks). There are 26 more for the Mastra companion and 11 for the Temporal
+companion, and GitHub Actions runs all of them, plus the replay, on every push.
 
 ### Mastra: asking the original repository what still matters
 
@@ -208,6 +253,59 @@ path that skips the usual Sentry scrubbing hook, so the check now lives where no
 
 ![Agent Activity for one Gemma call: tokens and latency, and "No input for this span"](https://raw.githubusercontent.com/shaileshvats/inheritance-engine/main/docs/demo/screenshots/08-sentry-agent-activity-no-input.jpg)
 
+### Temporal: an inheritance that finishes while you sleep
+
+A full inheritance takes 15–25 minutes of local Gemma work: investigate, restore, research, triage. Each of those
+engine jobs already survives a restart on its own. Nothing chained them, though, and nothing waited out a model server
+that went down or retried a job that failed because a model call timed out.
+
+The optional [Temporal](https://temporal.io) companion
+([code](https://github.com/shaileshvats/inheritance-engine/tree/main/companion/temporal)) is one durable workflow,
+`inheritAndRestore`. Before each stage it checks the engine's status, and if the model, Docker or the Mastra companion
+is down, it waits with backoff instead of failing. It follows each engine job with heartbeats. A failed job gets one
+more run, and both job ids are recorded. Partners that aren't configured are skipped, not counted as failures. Only ids
+and statuses go into Temporal's history, and the server is a local dev server.
+
+To test it, I ran it on smokesignal and killed the worker with `SIGKILL` in the middle of the restore job. Temporal
+recorded the heartbeat timeout. A new worker picked up the same engine job and followed it to the end, and the
+workflow went on through web research, Mastra triage and the Inheritance Record: 19 minutes, 86 history events, no
+job started twice. It wasn't spotless: the new worker also hit two spurious heartbeat timeouts on a busy machine
+before settling. I haven't proven the cause, so I doubled the timeout and recorded it as a limitation.
+
+![The durable inheritance workflow in the Temporal UI, completed after a worker crash](https://raw.githubusercontent.com/shaileshvats/inheritance-engine/main/docs/demo/screenshots/14-temporal-durable-workflow.jpg)
+
+### Tiger Data: a memory of every repair
+
+Each inheritance used to learn alone. When smokesignal's Reviewer rejected a fix that would have dropped `self`, fn.py
+never heard about it. The restoration memory
+([code](https://github.com/shaileshvats/inheritance-engine/blob/main/companion/mastra/src/memory.ts)) changes that.
+Every repair attempt across all inheritances is stored with its outcome, the engine's reason, the review and the probe
+verdict, in Postgres with pgvector and [Tiger Data](https://www.tigerdata.com)'s **pgvectorscale** (a DiskANN index).
+It's embedded by a local `nomic-embed-text` model. The Lead Engineer searches it with **hybrid keyword + vector
+ranking**, so a query like *"cannot import name Iterable from collections"* matches on exact words and on meaning.
+
+It runs on Tiger Data's open-source `timescaledb-ha` image on my laptop, not on Tiger Cloud, because repair text can
+quote inherited source. The engine refuses a non-loopback database for the same reason it refuses a non-loopback model.
+
+It's small, and I want to be clear about that: 26 attempts from two projects. Retrieval was right in my tests, and the
+Lead cited real repair ids with the correct statuses. Gemma's *explanation* of why a precedent failed was sometimes
+wrong, so the answer gives the ids to check rather than asking to be trusted.
+
+![The Lead Engineer citing repairs from another inherited project, found by hybrid search](https://raw.githubusercontent.com/shaileshvats/inheritance-engine/main/docs/demo/screenshots/15-lead-restoration-memory.jpg)
+
+### GitHub Actions: the catch, reproduced on someone else's machine
+
+"It worked on my laptop" isn't evidence. On every push, a
+[GitHub Actions workflow](https://github.com/shaileshvats/inheritance-engine/blob/main/.github/workflows/ci.yml) builds
+the engine on a clean runner with no model and no secrets, then runs the replay through live Docker checks. It fails
+unless the existing tests still pass 126/126 before and after the patch, the behaviour probe still finds the change,
+the engine reverts it and nothing is committed. It uploads the resulting Inheritance Record as an artifact. The same
+workflow runs clippy and the Rust, Mastra and Temporal test suites, with the memory tests running against Tiger Data's
+Postgres image as a service container. [See a passing run →](https://github.com/shaileshvats/inheritance-engine/actions/runs/41234390396)
+
+This workflow is the basis of my GitHub Copilot category entry, which explicitly accepts automating a project with
+GitHub Actions. I didn't use Copilot itself to write this project.
+
 ## Why Does Open Innovation Matter?
 
 **Because preservation can't depend on a service that might disappear.** A tool for rescuing abandoned software has to
@@ -229,6 +327,7 @@ Reviewer, one environment variable gives that single role a bigger Gemma.
 | Investigation, citation checks, Docker tests (network off), behaviour probes, reverts | Installing the inherited project's dependencies, and pulling Docker images the first time |
 | `INHERITANCE.md` and the Inheritance Record | Mastra's upstream-issue triage (it reads GitHub issues) |
 | The Mastra Lead Engineer chat | SerpApi web search and Sentry tracing, both optional |
+| The restoration memory (local Postgres, local embeddings) and Temporal runs (local dev server) | GitHub Actions CI |
 
 ## The Spirit of It
 
@@ -290,6 +389,12 @@ people who made it stay on the page.
   edit, and the Reviewer rejected another that would have dropped `self`.
 - **Web research for obscure projects is often irrelevant.** The engine can check that a source exists, not that it's
   relevant. For smokesignal, the "documentation" Gemma found was about Python's `signal` module.
+- **The restoration memory is young.** It holds 26 attempts from two projects. Its retrieval is checkable, but the
+  Lead's summary of a precedent can misstate why it failed, so treat it as a lead, not evidence.
+- **The Temporal run had unexplained hiccups.** After the deliberate crash, two more heartbeat timeouts happened on a
+  healthy worker. They were retried automatically and no engine job ran twice, but I haven't proven their cause.
+- **The new integrations aren't in the video.** The video was recorded before Temporal, the restoration memory and CI
+  were added; their screenshots come from real runs on October 31.
 - **Probes only test what the Tester thought to probe**, and a 4B model writes wrong patches. The engine catches many,
   not all. A full run takes 15–25 minutes on a laptop.
 - Verification works for Python and Node.js, and only for public GitHub repositories. Replays exist for one recorded
@@ -304,9 +409,17 @@ and the runtime agents are Gemma.
 
 ## Prize Categories
 
-This entry uses Gemma (every agent role, locally), Mastra (the Lead Engineer chat and upstream-issue triage), Sentry
-Agent Tracing (engine and companion traces without prompts or code) and SerpApi (Hunter web discovery and cited web
-research). Each is described above.
+- **Gemma**: every agent role, running locally.
+- **Mastra**: the Lead Engineer chat, upstream-issue triage, and the Lead's search of the restoration memory.
+- **Sentry Agent Tracing**: engine and companion traces without prompts or code.
+- **SerpApi**: Hunter web discovery and cited web research.
+- **Temporal**: the durable inheritance workflow that survived a worker crash.
+- **Tiger Data**: the restoration memory, with pgvector and pgvectorscale on Tiger Data's self-hosted open-source image
+  (not Tiger Cloud).
+- **GitHub Copilot**: entered on the category's explicit "automate your project with GitHub Actions" option. CI re-runs
+  the replay and every test suite on each push. Copilot itself wasn't used to write this project.
+
+Each is described above.
 
 ---
 
